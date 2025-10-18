@@ -244,6 +244,184 @@ async function analyzeFileSignatures() {
   const exeFound = analysisResults.fileSignatures.some(s => s.extensions.includes('exe'));
   analysisResults.threatLevel = exeFound ? 'critical' : (analysisResults.fileSignatures.length ? 'high' : 'safe');
 }
+// === FULL LSB TEXT EXTRACTION ===
+async function extractLSBText() {
+  if (!currentFile) {
+    alert('Please upload an image first');
+    return;
+  }
+
+  const extractionResults = document.getElementById('extractionResults');
+  if (!extractionResults) return;
+
+  // Show progress
+  extractionResults.innerHTML = '<div class="progress-text">🔍 Extracting LSB data from image...</div>';
+
+  try {
+    // Load image into canvas
+    const img = new Image();
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+      img.onload = function() {
+        // Create canvas
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        
+        // Get pixel data
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const pixels = imageData.data;
+        
+        // Get LSB extraction method
+        const method = document.getElementById('lsbMethod')?.value || 'standard';
+        
+        // Extract LSBs based on method
+        let extractedBits = [];
+        
+        switch(method) {
+          case 'standard': // 1-bit LSB from RGB
+            for (let i = 0; i < pixels.length; i += 4) {
+              extractedBits.push(pixels[i] & 1);     // R
+              extractedBits.push(pixels[i+1] & 1);   // G
+              extractedBits.push(pixels[i+2] & 1);   // B
+            }
+            break;
+            
+          case '2bit': // 2-bit LSB from RGB
+            for (let i = 0; i < pixels.length; i += 4) {
+              extractedBits.push((pixels[i] & 2) >> 1);
+              extractedBits.push(pixels[i] & 1);
+              extractedBits.push((pixels[i+1] & 2) >> 1);
+              extractedBits.push(pixels[i+1] & 1);
+              extractedBits.push((pixels[i+2] & 2) >> 1);
+              extractedBits.push(pixels[i+2] & 1);
+            }
+            break;
+            
+          case 'red-only': // Red channel only
+            for (let i = 0; i < pixels.length; i += 4) {
+              extractedBits.push(pixels[i] & 1);
+            }
+            break;
+            
+          case 'sequential': // Sequential RGB
+            for (let i = 0; i < pixels.length; i++) {
+              if (i % 4 !== 3) extractedBits.push(pixels[i] & 1);
+            }
+            break;
+        }
+        
+        // Convert bits to bytes
+        let bytes = [];
+        for (let i = 0; i < extractedBits.length; i += 8) {
+          if (i + 7 < extractedBits.length) {
+            let byte = 0;
+            for (let j = 0; j < 8; j++) {
+              byte = (byte << 1) | extractedBits[i + j];
+            }
+            bytes.push(byte);
+          }
+        }
+        
+        // Try to decode as text
+        let extractedText = '';
+        let validTextFound = false;
+        
+        // Method 1: Look for null-terminated string
+        for (let i = 0; i < Math.min(bytes.length, 10000); i++) {
+          if (bytes[i] === 0) {
+            if (i > 10) { // At least 10 chars
+              const potentialText = String.fromCharCode(...bytes.slice(0, i));
+              if (/^[\x20-\x7E\n\r\t]+$/.test(potentialText)) {
+                extractedText = potentialText;
+                validTextFound = true;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Method 2: Extract all printable ASCII
+        if (!validTextFound) {
+          const printable = bytes.filter(b => (b >= 32 && b <= 126) || b === 10 || b === 13);
+          if (printable.length > 20) {
+            extractedText = String.fromCharCode(...printable.slice(0, 5000));
+            validTextFound = true;
+          }
+        }
+        
+        // Display results
+        if (validTextFound && extractedText.length > 10) {
+          extractionResults.innerHTML = `
+            <div class="detection-result" style="border-left-color: #4CAF50;">
+              <div class="result-header">
+                <span class="result-title">✅ LSB Text Extracted</span>
+                <span class="result-badge badge-safe">SUCCESS</span>
+              </div>
+              <p><strong>Method:</strong> ${method}</p>
+              <p><strong>Length:</strong> ${extractedText.length} characters</p>
+              <p><strong>Total Bits:</strong> ${extractedBits.length.toLocaleString()}</p>
+              
+              <div style="margin-top: 16px; padding: 16px; background: #f5f5f5; border-radius: 8px; max-height: 300px; overflow-y: auto;">
+                <strong>Extracted Text:</strong>
+                <pre style="margin-top: 8px; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.9rem;">${extractedText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+              </div>
+              
+              <button class="btn btn--primary" onclick="downloadExtractedText('${extractedText.replace(/'/g, "\\'")}', '${currentFile.name}')" style="margin-top: 16px;">
+                💾 Download Extracted Text
+              </button>
+            </div>
+          `;
+        } else {
+          extractionResults.innerHTML = `
+            <div class="detection-result" style="border-left-color: #FF9800;">
+              <div class="result-header">
+                <span class="result-title">⚠️ No Clear Text Found</span>
+                <span class="result-badge badge-warn">NO DATA</span>
+              </div>
+              <p>No readable text detected in LSB data using the <strong>${method}</strong> method.</p>
+              <p><strong>Extracted Bits:</strong> ${extractedBits.length.toLocaleString()}</p>
+              <p><strong>Possible Reasons:</strong></p>
+              <ul style="margin-left: 20px; margin-top: 8px;">
+                <li>Image doesn't contain LSB steganography</li>
+                <li>Wrong extraction method selected</li>
+                <li>Data is encrypted or compressed</li>
+                <li>Using different bit-plane encoding</li>
+              </ul>
+              <p style="margin-top: 12px;"><em>💡 Try different LSB extraction methods from the dropdown above.</em></p>
+            </div>
+          `;
+        }
+      };
+      
+      img.src = e.target.result;
+    };
+    
+    reader.readAsDataURL(currentFile);
+    
+  } catch(e) {
+    extractionResults.innerHTML = `
+      <div class="detection-result" style="border-left-color: #F44336;">
+        <div class="result-header">
+          <span class="result-title">❌ Extraction Failed</span>
+          <span class="result-badge badge-danger">ERROR</span>
+        </div>
+        <p>Error during LSB extraction: ${e.message}</p>
+      </div>
+    `;
+    console.error('LSB extraction error:', e);
+  }
+}
+
+// Helper to download extracted text
+function downloadExtractedText(text, originalFilename) {
+  const filename = 'extracted-lsb-' + originalFilename.replace(/\.[^/.]+$/, '') + '.txt';
+  downloadFile(text, filename, 'text/plain');
+}
+
 
 // --- Display results ---
 function displayResults() {
