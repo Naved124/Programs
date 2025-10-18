@@ -399,6 +399,103 @@ function resetAnalysis() {
       if (fileInput.files && fileInput.files[0]) processFile(fileInput.files[0]);
     });
   }
+  // === Extraction Functions ===
+function extractLSBText() {
+  alert('LSB Text Extraction\n\nThis feature extracts hidden text encoded in the least significant bits of image pixels. Implementation requires canvas analysis of the uploaded image.');
+  // TODO: Implement LSB text extraction from currentImageBinary
+}
+
+function extractAppendedFiles() {
+  if (!currentImageBinary) {
+    alert('Please upload an image first');
+    return;
+  }
+  
+  const mime = currentFile?.type || '';
+  let endOffset = -1;
+  
+  if (mime.includes('jpeg') || mime.includes('jpg')) endOffset = jpegEndOffset(currentImageBinary);
+  else if (mime.includes('png')) endOffset = pngEndOffset(currentImageBinary);
+  else if (mime.includes('gif')) endOffset = currentImageBinary.lastIndexOf(0x3B) + 1;
+  
+  if (endOffset > -1 && endOffset < currentImageBinary.length - 100) {
+    const appendedData = currentImageBinary.slice(endOffset);
+    const filename = 'extracted-appended-' + Date.now();
+    downloadFile(appendedData, filename, 'application/octet-stream');
+    alert(`Extracted ${appendedData.length} bytes of appended data after image end marker`);
+  } else {
+    alert('No appended data found after image termination marker');
+  }
+}
+
+function extractEmbeddedFiles() {
+  if (analysisResults.fileSignatures.length === 0) {
+    alert('No embedded file signatures detected. Run analysis first or switch to Aggressive mode.');
+    return;
+  }
+  
+  alert(`Found ${analysisResults.fileSignatures.length} embedded file signature(s).\n\nExtraction of complete files requires additional parsing logic for each file type.`);
+}
+
+function extractCustomPattern() {
+  const pattern = prompt('Enter hex pattern to search (e.g., 504B0304 for ZIP):');
+  if (!pattern) return;
+  
+  if (!currentImageBinary) {
+    alert('Please upload an image first');
+    return;
+  }
+  
+  const hex = Array.from(currentImageBinary.slice(0, Math.min(currentImageBinary.length, 1024*1024)))
+    .map(b => b.toString(16).padStart(2,'0')).join('').toUpperCase();
+  
+  const idx = hex.indexOf(pattern.toUpperCase());
+  if (idx !== -1) {
+    alert(`Pattern found at byte offset: ${(idx/2)|0} (0x${((idx/2)|0).toString(16)})`);
+  } else {
+    alert('Pattern not found in first 1MB of image data');
+  }
+}
+
+// === Visual Analysis Functions ===
+function showChannelAnalysis(channel) {
+  const resultEl = document.getElementById('visualResults');
+  if (!resultEl) return;
+  
+  if (!currentImageBinary) {
+    resultEl.innerHTML = '<p style="color: red;">Please upload an image first</p>';
+    return;
+  }
+  
+  let message = '';
+  switch(channel) {
+    case 'red':
+      message = '🔴 <strong>Red Channel Analysis</strong><br>Displays only the red color channel. Useful for detecting anomalies in red-channel LSB steganography.';
+      break;
+    case 'green':
+      message = '🟢 <strong>Green Channel Analysis</strong><br>Displays only the green color channel. Green often carries the most visual information.';
+      break;
+    case 'blue':
+      message = '🔵 <strong>Blue Channel Analysis</strong><br>Displays only the blue color channel. Blue channel LSB is commonly used for hiding data.';
+      break;
+    case 'lsb':
+      message = '👁️ <strong>LSB Visualization</strong><br>Shows the least significant bits amplified. Hidden data appears as visible patterns when LSBs are manipulated.';
+      break;
+    case 'histogram':
+      message = '📊 <strong>Channel Histograms</strong><br>Statistical distribution of pixel values per channel. Irregular patterns may indicate steganography.';
+      break;
+  }
+  
+  resultEl.innerHTML = `
+    <div class="detection-result">
+      <p>${message}</p>
+      <p style="margin-top: 16px; color: #666;">
+        <em>Visual analysis requires canvas rendering. This is a placeholder - full implementation would render the ${channel} analysis here.</em>
+      </p>
+    </div>
+  `;
+}
+
 
 (function init() {
   const modeSel = document.getElementById('detectionMode');
