@@ -2762,7 +2762,7 @@ function displayLSBAnalysisRobust() {
 // Original function kept for compatibility
 function displayLSBAnalysis() {
     displayLSBAnalysisRobust();
-}
+
 
     const lsbResults = document.getElementById('lsbResults');
     const lsbVisual = document.getElementById('lsbVisual');
@@ -2771,7 +2771,7 @@ function displayLSBAnalysis() {
         lsbResults.innerHTML = '<p>LSB analysis could not be completed.</p>';
         return;
     }
-    
+}
     const chi = analysisResults.lsbAnalysis.chiSquare;
     const sp = analysisResults.lsbAnalysis.samplePairs;
     
