@@ -32,38 +32,101 @@ const IMAGE_TERMINATION_BYTES = {
     jpeg: 'FFD9',
     png: '49454E44AE426082',
     gif: '003B',
-    bmp: '' // BMP doesn't have specific termination
+    bmp: ''
 };
+
+// ===== CRITICAL: UTILITY FUNCTIONS MUST BE DEFINED FIRST =====
+
+// Check for known file signatures in data
+function checkForKnownSignatures(data) {
+    try {
+        const hexData = Array.from(data.slice(0, 100)).map(b => b.toString(16).padStart(2, '0')).join('');
+        const commonSignatures = ['4d5a', '504b0304', '52617221', '377abcaf271c', '25504446', 'ffd8ff', '89504e47', '474946'];
+        return commonSignatures.some(sig => hexData.includes(sig));
+    } catch (e) {
+        console.error('checkForKnownSignatures error:', e);
+        return false;
+    }
+}
+
+// Analyze local entropy around detection point
+function analyzeLocalEntropy(uint8Array, offset, length) {
+    try {
+        const sample = uint8Array.slice(offset, offset + length);
+        const histogram = new Array(256).fill(0);
+        sample.forEach(byte => histogram[byte]++);
+        
+        let entropy = 0;
+        const sampleLength = sample.length;
+        histogram.forEach(count => {
+            if (count > 0) {
+                const probability = count / sampleLength;
+                entropy -= probability * Math.log2(probability);
+            }
+        });
+        
+        return entropy / 8.0; // Normalize to 0-1 scale
+    } catch (e) {
+        console.error('analyzeLocalEntropy error:', e);
+        return 0;
+    }
+}
+
+// Validate appended data to reduce false positives
 function validateAppendedData(data) {
-    const validation = {
-        confidence: 0,
-        details: [],
-        riskLevel: 'LOW'
-    };
-    
-    let score = 0;
-    
-    // Check if data contains null padding (reduces confidence)
-    const nullBytes = data.filter(byte => byte === 0).length;
-    const nullRatio = nullBytes / data.length;
-    
-    if (nullRatio > 0.9) {
-        validation.details.push('Mostly null bytes - likely padding');
-        score = 0.1;
-    } else if (nullRatio > 0.7) {
-        validation.details.push('High null byte ratio - possibly padding');
-        score = 0.3;
-    } else {
-        validation.details.push('Non-null data detected');
-        score = 0.6;
+    try {
+        const validation = {
+            confidence: 0,
+            details: [],
+            riskLevel: 'LOW'
+        };
+        
+        let score = 0;
+        
+        // Check if data contains null padding (reduces confidence)
+        const nullBytes = data.filter(byte => byte === 0).length;
+        const nullRatio = nullBytes / data.length;
+        
+        if (nullRatio > 0.9) {
+            validation.details.push('Mostly null bytes - likely padding');
+            score = 0.1;
+        } else if (nullRatio > 0.7) {
+            validation.details.push('High null byte ratio - possibly padding');
+            score = 0.3;
+        } else {
+            validation.details.push('Non-null data detected');
+            score = 0.6;
+        }
+        
+        // Check entropy
+        const entropy = analyzeLocalEntropy(data, 0, Math.min(1024, data.length));
+        if (entropy > 0.5) {
+            validation.details.push('High entropy - structured data likely');
+            score += 0.3;
+        }
+        
+        // Look for file signatures in appended data
+        const hasKnownSignature = checkForKnownSignatures(data);
+        if (hasKnownSignature) {
+            validation.details.push('Contains known file signatures');
+            score += 0.4;
+            validation.riskLevel = 'HIGH';
+        }
+        
+        validation.confidence = Math.min(1.0, score);
+        return validation;
+    } catch (e) {
+        console.error('validateAppendedData error:', e);
+        return {
+            confidence: 0,
+            details: ['Validation failed: ' + e.message],
+            riskLevel: 'LOW'
+        };
     }
-    
-    // Check entropy
-    const entropy = analyzeLocalEntropy(data, 0, Math.min(1024, data.length));
-    if (entropy > 0.5) {
-        validation.details.push('High entropy - structured data likely');
-        score += 0.3;
-    }
+}
+
+// ===== NOW THE REST OF THE CODE CAN SAFELY USE THESE FUNCTIONS =====
+
     
     // Look for file signatures in appended data
     const hasKnownSignature = checkForKnownSignatures(data);
