@@ -281,7 +281,7 @@ function retryWithSimpleMode() {
     startAnalysisRobust(currentFile);
 }
     // Already handled above
-}
+
 
 // Initialize IndexedDB
 async function initializeDatabase() {
