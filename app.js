@@ -155,56 +155,89 @@ async function startAnalysis() {
 }
 
 async function analyzeFileSignatures() {
-  const ends = findImageEndOffsets(currentImageBinary);
-  const afterEndRegions = [];
-  
-  for (const end of ends) {
-    if (end.offset < currentImageBinary.length - 1000) {
-      afterEndRegions.push({ start: end.offset, format: end.format });
-    }
+  const u8 = currentImageBinary;
+  const mime = currentFile?.type || '';
+  let endOffset = -1;
+
+  if (mime.includes('jpeg') || mime.includes('jpg')) endOffset = jpegEndOffset(u8);
+  else if (mime.includes('png')) endOffset = pngEndOffset(u8);
+  else if (mime.includes('gif')) endOffset = u8.lastIndexOf(0x3B) + 1; // 0x3B trailer
+  // If unknown, keep endOffset = -1
+
+  // Build regions strictly AFTER the real end of image
+  const regions = [];
+  if (endOffset > -1 && endOffset < u8.length - 4096) {
+    regions.push({ start: endOffset, format: 'appended' });
   }
-  
-  const mode = detectionSettings.mode;
-  const scanRegions = (mode === 'aggressive' || afterEndRegions.length === 0)
-    ? [{ start: 0, format: 'full' }]
-    : afterEndRegions;
-  
-  for (const region of scanRegions) {
-    const start = region.start;
-    const window = currentImageBinary.slice(start);
-    
-    if (region.format !== 'full') {
-      const val = validateAppendedData(window);
-      if (val.confidence < detectionSettings.confidenceThreshold) continue;
+
+  // Conservative: if no appended region, do NOT scan at all
+  if (detectionSettings.mode === 'conservative' && regions.length === 0) {
+    analysisResults.fileSignatures = [];
+    analysisResults.threatLevel = 'safe';
+    return;
+  }
+
+  // Balanced: if no appended region, scan first 64 KB only
+  if (detectionSettings.mode === 'balanced' && regions.length === 0) {
+    regions.push({ start: 0, format: 'limited' });
+  }
+
+  // Aggressive: full fallback
+  if (detectionSettings.mode === 'aggressive' && regions.length === 0) {
+    regions.push({ start: 0, format: 'full' });
+  }
+
+  const hits = [];
+  for (const region of regions) {
+    const window = u8.slice(region.start);
+    // Validate appended data strongly: require signature AND entropy
+    if (region.format === 'appended') {
+      const v = validateAppendedData(window);
+      const hasSig = checkForKnownSignatures(window);
+      const strong = hasSig && v.confidence >= detectionSettings.confidenceThreshold && window.length >= 4096;
+      if (!strong) continue;
     }
-    
-    const maxScan = window.slice(0, Math.min(window.length, 256 * 1024));
-    const hex = hexAt(maxScan, 0, maxScan.length);
-    
+
+    const budget = region.format === 'limited' ? 64 * 1024
+                  : region.format === 'full' ? Math.min(window.length, 256 * 1024)
+                  : Math.min(window.length, 256 * 1024);
+    const slab = window.slice(0, budget);
+    let hex = '';
+    for (let i = 0; i < slab.length; i++) hex += slab[i].toString(16).padStart(2,'0');
+    hex = hex.toUpperCase();
+
     for (const sigHex in FILE_SIGNATURES) {
       const idx = hex.indexOf(sigHex);
-      if (idx !== -1) {
-        const byteOffset = start + ((idx / 2) | 0);
-        const meta = FILE_SIGNATURES[sigHex];
-        const remaining = (currentImageBinary.length - byteOffset);
-        if (remaining >= meta.minSize) {
-          analysisResults.fileSignatures.push({
-            signature: sigHex,
-            name: meta.name,
-            extensions: meta.ext,
-            description: `${meta.name} signature`,
-            offset: byteOffset,
-            hexOffset: '0x' + byteOffset.toString(16),
-            risk: meta.risk
-          });
-        }
-      }
+      if (idx === -1) continue;
+      const byteOffset = region.start + ((idx / 2) | 0);
+      const meta = FILE_SIGNATURES[sigHex];
+      const remaining = u8.length - byteOffset;
+      if (remaining < meta.minSize) continue; // too small to be real
+      hits.push({
+        signature: sigHex,
+        name: meta.name,
+        extensions: meta.ext,
+        description: `${meta.name} signature`,
+        offset: byteOffset,
+        hexOffset: '0x' + byteOffset.toString(16),
+        risk: meta.risk
+      });
     }
   }
-  
+
+  // De‑duplicate overlapping hits by signature+offset
+  const seen = new Set();
+  analysisResults.fileSignatures = hits.filter(h => {
+    const k = h.signature + ':' + h.offset;
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+
   const exeFound = analysisResults.fileSignatures.some(s => s.extensions.includes('exe'));
   analysisResults.threatLevel = exeFound ? 'critical' : (analysisResults.fileSignatures.length ? 'high' : 'safe');
 }
+
+  
 
 // --- Display results ---
 function displayResults() {
