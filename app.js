@@ -146,6 +146,48 @@ async function processFile(file) {
     alert('Analysis failed: ' + e.message);
   }
 }
+// ---- button wiring (call once in init) ----
+function wireActionButtons() {
+  const btnExport = document.getElementById('exportReportBtn'); // id in your HTML
+  const btnDownloadAll = document.getElementById('downloadAllBtn'); // id in your HTML
+  const btnSave = document.getElementById('saveSessionBtn'); // id in your HTML
+
+  if (btnExport) btnExport.addEventListener('click', () => {
+    const report = {
+      generatedAt: new Date().toISOString(),
+      file: { name: currentFile?.name, size: currentFile?.size, type: currentFile?.type },
+      settings: detectionSettings,
+      results: analysisResults
+    };
+    downloadFile(JSON.stringify(report, null, 2), 'steg-analysis-report.json', 'application/json');
+  });
+
+  if (btnDownloadAll) btnDownloadAll.addEventListener('click', () => {
+    // If you have extracted files, loop them here and download individually
+    // Fallback: download the same JSON report so button is not dead
+    const fallback = {
+      note: 'No extracted binaries available; providing analysis report package',
+      results: analysisResults
+    };
+    downloadFile(JSON.stringify(fallback, null, 2), 'steg-analysis-package.json', 'application/json');
+  });
+
+  if (btnSave) btnSave.addEventListener('click', () => {
+    try {
+      const key = 'steg-session-' + Date.now();
+      const data = {
+        ts: new Date().toISOString(),
+        file: { name: currentFile?.name, size: currentFile?.size, type: currentFile?.type },
+        settings: detectionSettings,
+        results: analysisResults
+      };
+      localStorage.setItem(key, JSON.stringify(data));
+      alert('Session saved');
+    } catch (e) {
+      alert('Could not save session: ' + e.message);
+    }
+  });
+}
 
 async function startAnalysis() {
   console.log('Starting analysis...');
