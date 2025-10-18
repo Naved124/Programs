@@ -12,12 +12,12 @@ const IMAGE_TERMINATION_BYTES = {
 };
 
 const FILE_SIGNATURES = {
-  '4D5A':       { name: 'Windows Executable', ext: ['exe','dll','scr','com'], risk: 'CRITICAL', minSize: 1024 },
-  '7F454C46':   { name: 'Linux ELF',         ext: ['elf','so','o'],          risk: 'CRITICAL', minSize: 1024 },
-  '504B0304':   { name: 'ZIP Archive',       ext: ['zip','jar','apk','docx','xlsx'], risk: 'HIGH',   minSize: 22 },
-  '52617221':   { name: 'RAR Archive',       ext: ['rar'],                    risk: 'HIGH',   minSize: 64  },
-  '377ABCAF271C': { name: '7-Zip',           ext: ['7z'],                     risk: 'HIGH',   minSize: 64  },
-  '25504446':   { name: 'PDF Document',      ext: ['pdf'],                    risk: 'MEDIUM', minSize: 100 }
+  '4D5A':         { name: 'Windows Executable', ext: ['exe','dll','scr','com'], risk: 'CRITICAL', minSize: 1024 },
+  '7F454C46':     { name: 'Linux ELF',         ext: ['elf','so','o'],          risk: 'CRITICAL', minSize: 1024 },
+  '504B0304':     { name: 'ZIP Archive',       ext: ['zip','jar','apk','docx','xlsx'], risk: 'HIGH',   minSize: 22 },
+  '52617221':     { name: 'RAR Archive',       ext: ['rar'],                    risk: 'HIGH',   minSize: 64  },
+  '377ABCAF271C': { name: '7-Zip',             ext: ['7z'],                     risk: 'HIGH',   minSize: 64  },
+  '25504446':     { name: 'PDF Document',      ext: ['pdf'],                    risk: 'MEDIUM', minSize: 100 }
 };
 
 const DETECTION_MODES = {
@@ -27,7 +27,7 @@ const DETECTION_MODES = {
 };
 
 let detectionSettings = { mode: 'conservative', confidenceThreshold: 0.8, contextValidation: true };
-let analysisResults = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
+let analysisResults   = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
 let currentFile = null;
 let currentImageBinary = null;
 
@@ -51,7 +51,7 @@ function analyzeLocalEntropy(uint8Array, offset, length) {
   try {
     if (!uint8Array || !uint8Array.length) return 0;
     const start = Math.max(0, offset|0);
-    const end = Math.min(start + Math.max(1, length|0), uint8Array.length);
+    const end   = Math.min(start + Math.max(1, length|0), uint8Array.length);
     const sample = uint8Array.slice(start, end);
     const hist = new Array(256).fill(0);
     for (let i = 0; i < sample.length; i++) hist[sample[i]]++;
@@ -84,7 +84,7 @@ function validateAppendedData(data) {
     const hasSig = checkForKnownSignatures(data);
     if (hasSig) { details.push('Known file signature present'); score += 0.4; }
     const confidence = Math.min(1, score);
-    const riskLevel = hasSig ? 'HIGH' : (ent > 0.5 ? 'MEDIUM' : 'LOW');
+    const riskLevel  = hasSig ? 'HIGH' : (ent > 0.5 ? 'MEDIUM' : 'LOW');
     return { confidence, details, riskLevel };
   } catch (e) {
     console.error('validateAppendedData error:', e);
@@ -97,126 +97,6 @@ function hexAt(data, offset, length) {
   let s = '';
   for (let i = offset; i < end; i++) s += data[i].toString(16).padStart(2, '0');
   return s.toUpperCase();
-}
-
-function findImageEndOffsets(uint8) {
-  const results = [];
-  const hex = hexAt(uint8, 0, Math.min(uint8.length, 4 * 1024 * 1024));
-  let idx = hex.indexOf(IMAGE_TERMINATION_BYTES.jpeg);
-  while (idx !== -1) {
-    results.push({ format: 'jpeg', offset: (idx / 2 | 0) + (IMAGE_TERMINATION_BYTES.jpeg.length / 2 | 0) });
-    idx = hex.indexOf(IMAGE_TERMINATION_BYTES.jpeg, idx + IMAGE_TERMINATION_BYTES.jpeg.length);
-  }
-  idx = hex.indexOf(IMAGE_TERMINATION_BYTES.png);
-  while (idx !== -1) {
-    results.push({ format: 'png', offset: (idx / 2 | 0) + (IMAGE_TERMINATION_BYTES.png.length / 2 | 0) });
-    idx = hex.indexOf(IMAGE_TERMINATION_BYTES.png, idx + IMAGE_TERMINATION_BYTES.png.length);
-  }
-  idx = hex.indexOf(IMAGE_TERMINATION_BYTES.gif);
-  while (idx !== -1) {
-    results.push({ format: 'gif', offset: (idx / 2 | 0) + (IMAGE_TERMINATION_BYTES.gif.length / 2 | 0) });
-    idx = hex.indexOf(IMAGE_TERMINATION_BYTES.gif, idx + IMAGE_TERMINATION_BYTES.gif.length);
-  }
-  return results.sort((a, b) => a.offset - b.offset);
-}
-
-// --- Core analysis ---
-async function processFile(file) {
-  try {
-    currentFile = file;
-    analysisResults = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
-    
-    const analysisEl = document.getElementById('analysisContainer');
-    if (analysisEl) analysisEl.style.display = 'block';
-    
-    const infoEl = document.getElementById('fileInfo');
-    if (infoEl && currentFile) {
-      infoEl.innerHTML = `
-        <div><strong>Name:</strong> ${currentFile.name}</div>
-        <div><strong>Size:</strong> ${(currentFile.size/1024).toFixed(1)} KB</div>
-        <div><strong>Type:</strong> ${currentFile.type || 'unknown'}</div>
-      `;
-    }
-    
-    const arr = await file.arrayBuffer();
-    currentImageBinary = new Uint8Array(arr);
-    await startAnalysis();
-  } catch (e) {
-    console.error('processFile error:', e);
-    alert('Analysis failed: ' + e.message);
-  }
-}
-// ---- button wiring (call once in init) ----
-function wireActionButtons() {
-  const btnExport = document.getElementById('exportReportBtn'); // id in your HTML
-  const btnDownloadAll = document.getElementById('downloadAllBtn'); // id in your HTML
-  const btnSave = document.getElementById('saveSessionBtn'); // id in your HTML
-
-  if (btnExport) btnExport.addEventListener('click', () => {
-    const report = {
-      generatedAt: new Date().toISOString(),
-      file: { name: currentFile?.name, size: currentFile?.size, type: currentFile?.type },
-      settings: detectionSettings,
-      results: analysisResults
-    };
-    downloadFile(JSON.stringify(report, null, 2), 'steg-analysis-report.json', 'application/json');
-  });
-  // Wrappers for onclick buttons (if your HTML uses them)
-function exportResults() { 
-  const report = { generatedAt: new Date().toISOString(), file: { name: currentFile?.name, size: currentFile?.size, type: currentFile?.type }, settings: detectionSettings, results: analysisResults };
-  downloadFile(JSON.stringify(report, null, 2), 'steg-analysis-report.json', 'application/json');
-}
-function downloadAllExtracted() { 
-  const pkg = { note: 'No extracted binaries available; providing analysis package', results: analysisResults };
-  downloadFile(JSON.stringify(pkg, null, 2), 'steg-analysis-package.json', 'application/json');
-}
-function saveAnalysisSession(data = analysisResults) { 
-  try { const key='steg-session-'+Date.now(); const payload={ ts:new Date().toISOString(), file:{ name: currentFile?.name, size: currentFile?.size, type: currentFile?.type }, settings:detectionSettings, results:data }; localStorage.setItem(key, JSON.stringify(payload)); alert('Session saved'); } catch(e){ alert('Could not save session: '+e.message); }
-}
-function resetAnalysis() { 
-  analysisResults = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
-  currentFile = null;
-  ['assessmentResult','quickResults','signatureResults','extractionResults','lsbResults','lsbVisual','statsResults','histograms','metadataResults','visualResults'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
-  const analysisEl = document.getElementById('analysisContainer'); if (analysisEl) analysisEl.style.display='none';
-  const fileInput = document.getElementById('fileInput'); if (fileInput) fileInput.value='';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-
-  if (btnDownloadAll) btnDownloadAll.addEventListener('click', () => {
-    // If you have extracted files, loop them here and download individually
-    // Fallback: download the same JSON report so button is not dead
-    const fallback = {
-      note: 'No extracted binaries available; providing analysis report package',
-      results: analysisResults
-    };
-    downloadFile(JSON.stringify(fallback, null, 2), 'steg-analysis-package.json', 'application/json');
-  });
-
-  if (btnSave) btnSave.addEventListener('click', () => {
-    try {
-      const key = 'steg-session-' + Date.now();
-      const data = {
-        ts: new Date().toISOString(),
-        file: { name: currentFile?.name, size: currentFile?.size, type: currentFile?.type },
-        settings: detectionSettings,
-        results: analysisResults
-      };
-      localStorage.setItem(key, JSON.stringify(data));
-      alert('Session saved');
-    } catch (e) {
-      alert('Could not save session: ' + e.message);
-    }
-  });
-}
-// Download helper
-function downloadFile(data, filename, mimeType) {
-  const blob = new Blob([data], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
 // Robust JPEG end (scan from tail for FFD9)
@@ -238,6 +118,42 @@ function pngEndOffset(u8) {
   return -1;
 }
 
+// Download helper
+function downloadFile(data, filename, mimeType) {
+  const blob = new Blob([data], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// --- Core analysis ---
+async function processFile(file) {
+  try {
+    currentFile = file;
+    analysisResults = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
+
+    const analysisEl = document.getElementById('analysisContainer');
+    if (analysisEl) analysisEl.style.display = 'block';
+
+    const infoEl = document.getElementById('fileInfo');
+    if (infoEl && currentFile) {
+      infoEl.innerHTML = `
+        <div><strong>Name:</strong> ${currentFile.name}</div>
+        <div><strong>Size:</strong> ${(currentFile.size/1024).toFixed(1)} KB</div>
+        <div><strong>Type:</strong> ${currentFile.type || 'unknown'}</div>
+      `;
+    }
+
+    const arr = await file.arrayBuffer();
+    currentImageBinary = new Uint8Array(arr);
+    await startAnalysis();
+  } catch (e) {
+    console.error('processFile error:', e);
+    alert('Analysis failed: ' + e.message);
+  }
+}
 
 async function startAnalysis() {
   console.log('Starting analysis...');
@@ -254,7 +170,6 @@ async function analyzeFileSignatures() {
   if (mime.includes('jpeg') || mime.includes('jpg')) endOffset = jpegEndOffset(u8);
   else if (mime.includes('png')) endOffset = pngEndOffset(u8);
   else if (mime.includes('gif')) endOffset = u8.lastIndexOf(0x3B) + 1; // 0x3B trailer
-  // If unknown, keep endOffset = -1
 
   // Build regions strictly AFTER the real end of image
   const regions = [];
@@ -282,6 +197,7 @@ async function analyzeFileSignatures() {
   const hits = [];
   for (const region of regions) {
     const window = u8.slice(region.start);
+
     // Validate appended data strongly: require signature AND entropy
     if (region.format === 'appended') {
       const v = validateAppendedData(window);
@@ -329,8 +245,6 @@ async function analyzeFileSignatures() {
   analysisResults.threatLevel = exeFound ? 'critical' : (analysisResults.fileSignatures.length ? 'high' : 'safe');
 }
 
-  
-
 // --- Display results ---
 function displayResults() {
   displayThreatAssessment();
@@ -341,11 +255,9 @@ function displayResults() {
 function displayThreatAssessment() {
   const assessmentEl = document.getElementById('assessmentResult');
   if (!assessmentEl) return;
-  
+
   const level = analysisResults.threatLevel;
-  const count = analysisResults.fileSignatures.length;
-  const exeCount = analysisResults.fileSignatures.filter(s => s.extensions.includes('exe')).length;
-  
+
   let html = '';
   if (level === 'critical') {
     html = `<div class="alert alert-danger">
@@ -360,39 +272,29 @@ function displayThreatAssessment() {
       <strong>✅ SAFE</strong> - No embedded file signatures detected
     </div>`;
   }
-  
-  html += `<div style="margin-top:16px"><p><strong>Detection Mode:</strong> ${detectionSettings.mode.charAt(0).toUpperCase() + detectionSettings.mode.slice(1)}</p>
-  <p><strong>Enhanced Error Handling:</strong> Enabled</p></div>`;
-  
+
+  html += `<div style="margin-top:16px">
+    <p><strong>Detection Mode:</strong> ${detectionSettings.mode.charAt(0).toUpperCase() + detectionSettings.mode.slice(1)}</p>
+    <p><strong>Enhanced Error Handling:</strong> Enabled</p>
+  </div>`;
+
   assessmentEl.innerHTML = html;
 }
 
 function displayQuickResults() {
   const quickEl = document.getElementById('quickResults');
   if (!quickEl) return;
-  
-  const count = analysisResults.fileSignatures.length;
+
+  const count    = analysisResults.fileSignatures.length;
   const highConf = analysisResults.fileSignatures.filter(s => s.risk === 'CRITICAL' || s.risk === 'HIGH').length;
   const exeCount = analysisResults.fileSignatures.filter(s => s.extensions.includes('exe')).length;
-  
+
   quickEl.innerHTML = `
     <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-value">${count}</div>
-        <div class="stat-label">Total Detections</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">${highConf}</div>
-        <div class="stat-label">High Confidence (≥80%)</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">${exeCount}</div>
-        <div class="stat-label">Executable Files</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value">${(detectionSettings.confidenceThreshold * 100).toFixed(0)}%</div>
-        <div class="stat-label">Average Confidence</div>
-      </div>
+      <div class="stat-card"><div class="stat-value">${count}</div><div class="stat-label">Total Detections</div></div>
+      <div class="stat-card"><div class="stat-value">${highConf}</div><div class="stat-label">High Confidence (≥80%)</div></div>
+      <div class="stat-card"><div class="stat-value">${exeCount}</div><div class="stat-label">Executable Files</div></div>
+      <div class="stat-card"><div class="stat-value">${(detectionSettings.confidenceThreshold * 100).toFixed(0)}%</div><div class="stat-label">Average Confidence</div></div>
     </div>
   `;
 }
@@ -400,7 +302,7 @@ function displayQuickResults() {
 function displayFileSignatures() {
   const sigEl = document.getElementById('signatureResults');
   if (!sigEl) return;
-  
+
   if (analysisResults.fileSignatures.length === 0) {
     sigEl.innerHTML = `
       <div class="detection-result">
@@ -417,7 +319,7 @@ function displayFileSignatures() {
       </div>`;
     return;
   }
-  
+
   let html = '';
   analysisResults.fileSignatures.forEach((sig) => {
     const badgeClass = sig.risk === 'CRITICAL' ? 'badge-danger' : (sig.risk === 'HIGH' ? 'badge-warn' : 'badge-info');
@@ -438,48 +340,97 @@ function displayFileSignatures() {
   sigEl.innerHTML = html;
 }
 
+// --- Global actions used by HTML onclick attributes ---
+function exportResults() {
+  const report = {
+    generatedAt: new Date().toISOString(),
+    file: { name: currentFile?.name, size: currentFile?.size, type: currentFile?.type },
+    settings: detectionSettings,
+    results: analysisResults
+  };
+  downloadFile(JSON.stringify(report, null, 2), 'steg-analysis-report.json', 'application/json');
+}
+
+function downloadAllExtracted() {
+  const pkg = {
+    note: 'No extracted binaries available; providing analysis report package',
+    file: { name: currentFile?.name, size: currentFile?.size, type: currentFile?.type },
+    settings: detectionSettings,
+    results: analysisResults
+  };
+  downloadFile(JSON.stringify(pkg, null, 2), 'steg-analysis-package.json', 'application/json');
+}
+
+function saveAnalysisSession(data = analysisResults) {
+  try {
+    const key = 'steg-session-' + Date.now();
+    const payload = {
+      ts: new Date().toISOString(),
+      file: { name: currentFile?.name, size: currentFile?.size, type: currentFile?.type },
+      settings: detectionSettings,
+      results: data
+    };
+    localStorage.setItem(key, JSON.stringify(payload));
+    alert('Session saved');
+  } catch (e) {
+    alert('Could not save session: ' + e.message);
+  }
+}
+
+function resetAnalysis() {
+  analysisResults = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
+  currentFile = null;
+  ['assessmentResult','quickResults','signatureResults','extractionResults','lsbResults','lsbVisual','statsResults','histograms','metadataResults','visualResults']
+    .forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+  const analysisEl = document.getElementById('analysisContainer');
+  if (analysisEl) analysisEl.style.display = 'none';
+  const fileInput = document.getElementById('fileInput');
+  if (fileInput) fileInput.value = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 // --- Event wiring ---
 (function init() {
   const modeSel = document.getElementById('detectionMode');
   const thrSel  = document.getElementById('confidenceThreshold');
   const ctxSel  = document.getElementById('contextValidation');
-  
+
   if (modeSel) modeSel.addEventListener('change', (e) => {
     const m = e.target.value || 'conservative';
     detectionSettings.mode = m;
     const cfg = DETECTION_MODES[m] || DETECTION_MODES.conservative;
     detectionSettings.confidenceThreshold = cfg.confidenceThreshold;
-    detectionSettings.contextValidation = cfg.contextValidation;
+    detectionSettings.contextValidation   = cfg.contextValidation;
   });
-  
+
   if (thrSel) thrSel.addEventListener('change', (e) => {
     const v = parseFloat(e.target.value);
     if (!Number.isNaN(v)) detectionSettings.confidenceThreshold = v;
   });
-  
+
   if (ctxSel) ctxSel.addEventListener('change', (e) => {
     detectionSettings.contextValidation = (e.target.value === 'enabled');
   });
-  
+
   const fileInput  = document.getElementById('fileInput');
   const uploadArea = document.getElementById('uploadArea');
-  
+
   if (fileInput) {
     fileInput.addEventListener('change', () => {
       if (fileInput.files && fileInput.files[0]) processFile(fileInput.files[0]);
     });
   }
-  
+
   if (uploadArea) {
     uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag'); });
     uploadArea.addEventListener('dragleave', () => { uploadArea.classList.remove('drag'); });
     uploadArea.addEventListener('drop', (e) => {
       e.preventDefault();
-      uploadArea.classList.remove('drag');
+      uploadArea.removeAttribute('class'); // remove drag
       const f = e.dataTransfer.files && e.dataTransfer.files[0];
       if (f) processFile(f);
     });
   }
-  
+
   console.log('Steganography detector initialized');
 })();
