@@ -1124,7 +1124,7 @@ async function analyzeFileSignatures(uint8Array) {
     // Use the robust version instead
     return await analyzeFileSignaturesRobust(uint8Array);
 }
-}
+
 
 // Enhanced signature validation with structure checking
 function validateSignatureDetection(uint8Array, offset, signatureInfo, imageTerminationPoints) {
@@ -1787,7 +1787,7 @@ function calculateChannelEntropy(histogram) {
 async function performStatisticalAnalysis(file) {
     return await performStatisticalAnalysisRobust(file);
 }
-}
+
 
 // Safe entropy calculation (kept for compatibility)
 function calculateEntropy(histogram) {
@@ -1939,7 +1939,7 @@ function categorizeFileSize(size) {
 async function extractMetadata(file, uint8Array) {
     return await extractMetadataRobust(file, uint8Array);
 }
-}
+
 
 function extractBasicEXIF(uint8Array) {
     const hexData = Array.from(uint8Array.slice(0, 1000)).map(b => 
@@ -2013,7 +2013,7 @@ async function generateVisualAnalysisRobust(file) {
 async function generateVisualAnalysis(file) {
     return await generateVisualAnalysisRobust(file);
 }
-}
+
 
 // Display results with error handling
 function displayResultsWithErrorHandling() {
@@ -2038,7 +2038,7 @@ function displayResultsWithErrorHandling() {
 function displayResults() {
     displayResultsWithErrorHandling();
 }
-}
+
 
 // Show analysis completion message
 function showAnalysisCompletionMessage(completedSteps, totalSteps) {
@@ -2265,7 +2265,7 @@ function displayOverviewRobust() {
 function displayOverview() {
     displayOverviewRobust();
 }
-}
+
     const threatAssessment = document.getElementById('assessmentResult');
     const quickResults = document.getElementById('quickResults');
     
@@ -2361,7 +2361,7 @@ function displayOverview() {
             </div>
         </div>
     `;
-}
+
 
 // Robust file signature display
 function displayFileSignaturesRobust() {
@@ -2526,7 +2526,7 @@ function formatDetectionResultRobust(sig, index, severity) {
 function displayFileSignatures() {
     displayFileSignaturesRobust();
 }
-}
+
     const signatureResults = document.getElementById('signatureResults');
     const hexDumpSection = document.getElementById('hexDumpSection');
     
@@ -2603,7 +2603,7 @@ function displayFileSignatures() {
     
     signatureResults.innerHTML = resultsHTML;
     hexDumpSection.innerHTML = hexDumpHTML;
-}
+
 
 // Format individual detection result with confidence information
 function formatDetectionResult(sig, index, severity) {
@@ -2763,7 +2763,7 @@ function displayLSBAnalysisRobust() {
 function displayLSBAnalysis() {
     displayLSBAnalysisRobust();
 }
-}
+
     const lsbResults = document.getElementById('lsbResults');
     const lsbVisual = document.getElementById('lsbVisual');
     
@@ -2816,7 +2816,7 @@ function displayLSBAnalysis() {
             <img src="${analysisResults.lsbAnalysis.visualization}" class="analysis-canvas" alt="LSB Visualization">
         `;
     }
-}
+
 
 // Robust statistical analysis display
 function displayStatisticalAnalysisRobust() {
@@ -2978,7 +2978,7 @@ function generateHistogramsRobust(histogramData) {
 function displayStatisticalAnalysis() {
     displayStatisticalAnalysisRobust();
 }
-}
+
     const statsResults = document.getElementById('statsResults');
     const histograms = document.getElementById('histograms');
     
@@ -3021,7 +3021,7 @@ function displayStatisticalAnalysis() {
     
     // Generate histograms
     histograms.innerHTML = generateHistograms(stats.histograms);
-}
+
 
 function generateHistograms(histogramData) {
     let html = '<h4>Color Channel Histograms</h4>';
@@ -3175,7 +3175,7 @@ function displayMetadataRobust() {
 function displayMetadata() {
     displayMetadataRobust();
 }
-}
+
     const metadataResults = document.getElementById('metadataResults');
     const metadata = analysisResults.metadata;
     
@@ -3204,7 +3204,7 @@ function displayMetadata() {
     }
     
     metadataResults.innerHTML = metadataHTML;
-}
+
 
 function showChannelAnalysis(channel) {
     const visualResults = document.getElementById('visualResults');
