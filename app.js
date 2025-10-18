@@ -1,16 +1,3 @@
-function checkForKnownSignatures(data) {
-    try {
-        const hexData = Array.from(data.slice(0, 100)).map(b => b.toString(16).padStart(2, '0')).join('');
-        const commonSigs = [
-            '4d5a', '504b0304', '52617221', '377abcaf271c', '25504446', 'ffd8ff', '89504e47', '474946'
-        ];
-        return commonSigs.some(sig => hexData.includes(sig));
-    } catch (e) {
-        console.error('checkForKnownSignatures error:', e);
-        return false;
-    }
-}
-
 // Simplified file signature database for reliable detection
 const SIMPLE_SIGNATURES = {
     '4d5a': { name: 'Windows Executable', ext: ['exe'], risk: 'CRITICAL' },
