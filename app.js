@@ -186,7 +186,7 @@ async function analyzeFileSignatures() {
       if (idx !== -1) {
         const byteOffset = start + ((idx / 2) | 0);
         const meta = FILE_SIGNATURES[sigHex];
-        const remaining = currentImageBinary.length - byteOffset);
+        const remaining = (currentImageBinary.length - byteOffset);
         if (remaining >= meta.minSize) {
           analysisResults.fileSignatures.push({
             signature: sigHex,
