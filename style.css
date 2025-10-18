@@ -1,81 +1,20 @@
-/* === JS/HTML alignment patch === */
+// Tab switching
+const tabBtns = document.querySelectorAll('.tab-btn');
+const tabPanes = document.querySelectorAll('.tab-pane');
 
-/* 1) Alerts used by Threat Assessment (JS uses: alert, alert-success, alert-warning, alert-danger) */
-.alert {
-  padding: var(--space-12) var(--space-16);
-  border-radius: var(--radius-base);
-  border: 1px solid var(--color-card-border);
-  text-align: center;
-  font-weight: var(--font-weight-medium);
-}
-.alert-success {
-  background: var(--color-bg-3);
-  color: var(--color-success);
-  border-color: rgba(var(--color-success-rgb, 33,128,141), 0.25);
-}
-.alert-warning {
-  background: rgba(var(--color-orange-500-rgb, 168,75,47), 0.10);
-  color: var(--color-warning);
-  border-color: rgba(var(--color-orange-500-rgb, 168,75,47), 0.25);
-}
-.alert-danger {
-  background: rgba(var(--color-red-500-rgb, 192,21,47), 0.10);
-  color: var(--color-error);
-  border-color: rgba(var(--color-red-500-rgb, 192,21,47), 0.25);
-}
+tabBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const targetTab = btn.getAttribute('data-tab');
+    
+    // Remove active from all
+    tabBtns.forEach(b => b.classList.remove('active'));
+    tabPanes.forEach(p => p.classList.remove('active'));
+    
+    // Add active to clicked
+    btn.classList.add('active');
+    const targetPane = document.getElementById(targetTab);
+    if (targetPane) targetPane.classList.add('active');
+  });
+});
 
-/* 2) Badges used by File Signatures (JS maps to: badge-danger, badge-warn, badge-info) */
-.result-badge.badge-danger {
-  background: rgba(var(--color-red-500-rgb, 192,21,47), 0.10);
-  color: var(--color-error);
-}
-.result-badge.badge-warn {
-  background: rgba(var(--color-orange-500-rgb, 168,75,47), 0.10);
-  color: var(--color-warning);
-}
-.result-badge.badge-info {
-  background: rgba(var(--color-slate-500-rgb, 98,108,113), 0.10);
-  color: var(--color-info);
-}
-
-/* 3) Drag state: JS toggles 'drag', existing CSS only styled 'drag-over' */
-.upload-area.drag {
-  border-color: var(--color-primary);
-  background: var(--color-bg-8);
-  transform: scale(1.02);
-}
-
-/* 4) Fix typo in detection stats font size (ensure XS scale is used) */
-.detection-stats {
-  font-size: var(--font-size-xs);
-}
-
-/* 5) Export actions polish for consistent spacing and wrapping */
-.export-actions {
-  gap: var(--space-12);
-}
-.export-actions .btn {
-  min-width: 220px;
-}
-
-/* 6) Ensure hex dump and extracted content are clearly readable in both themes */
-.hex-dump,
-.extracted-content {
-  color: var(--color-text);
-}
-
-/* 7) Make tabs stick visually on hover/active for better affordance */
-.tab-btn:hover {
-  background: var(--color-bg-1);
-}
-.tab-btn.active {
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
-}
-
-/* 8) Mobile tweaks for export block (avoid overflow) */
-@media (max-width: 480px) {
-  .export-actions .btn {
-    min-width: 100%;
-  }
-}
+console.log('Steganography detector initialized');
