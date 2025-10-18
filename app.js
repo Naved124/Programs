@@ -2548,8 +2548,7 @@ function displayFileSignatures() {
                 </div>
             </div>
         `;
-        return;
-    }
+        return;}
     
     // Separate detections by confidence level
     const highConfidence = analysisResults.fileSignatures.filter(sig => sig.confidence >= 0.8);
