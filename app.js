@@ -161,6 +161,27 @@ function wireActionButtons() {
     };
     downloadFile(JSON.stringify(report, null, 2), 'steg-analysis-report.json', 'application/json');
   });
+  // Wrappers for onclick buttons (if your HTML uses them)
+function exportResults() { 
+  const report = { generatedAt: new Date().toISOString(), file: { name: currentFile?.name, size: currentFile?.size, type: currentFile?.type }, settings: detectionSettings, results: analysisResults };
+  downloadFile(JSON.stringify(report, null, 2), 'steg-analysis-report.json', 'application/json');
+}
+function downloadAllExtracted() { 
+  const pkg = { note: 'No extracted binaries available; providing analysis package', results: analysisResults };
+  downloadFile(JSON.stringify(pkg, null, 2), 'steg-analysis-package.json', 'application/json');
+}
+function saveAnalysisSession(data = analysisResults) { 
+  try { const key='steg-session-'+Date.now(); const payload={ ts:new Date().toISOString(), file:{ name: currentFile?.name, size: currentFile?.size, type: currentFile?.type }, settings:detectionSettings, results:data }; localStorage.setItem(key, JSON.stringify(payload)); alert('Session saved'); } catch(e){ alert('Could not save session: '+e.message); }
+}
+function resetAnalysis() { 
+  analysisResults = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
+  currentFile = null;
+  ['assessmentResult','quickResults','signatureResults','extractionResults','lsbResults','lsbVisual','statsResults','histograms','metadataResults','visualResults'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+  const analysisEl = document.getElementById('analysisContainer'); if (analysisEl) analysisEl.style.display='none';
+  const fileInput = document.getElementById('fileInput'); if (fileInput) fileInput.value='';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 
   if (btnDownloadAll) btnDownloadAll.addEventListener('click', () => {
     // If you have extracted files, loop them here and download individually
@@ -188,6 +209,35 @@ function wireActionButtons() {
     }
   });
 }
+// Download helper
+function downloadFile(data, filename, mimeType) {
+  const blob = new Blob([data], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+// Robust JPEG end (scan from tail for FFD9)
+function jpegEndOffset(u8) {
+  for (let i = u8.length - 2; i >= 1; i--) {
+    if (u8[i] === 0xD9 && u8[i-1] === 0xFF) return i + 1;
+  }
+  return -1;
+}
+
+// Robust PNG IEND
+function pngEndOffset(u8) {
+  const sig = [0,0,0,0,0x49,0x45,0x4E,0x44,0xAE,0x42,0x60,0x82];
+  for (let i = 0; i <= u8.length - sig.length; i++) {
+    let ok = true;
+    for (let j = 0; j < sig.length; j++) if (u8[i+j] !== sig[j]) { ok = false; break; }
+    if (ok) return i + sig.length;
+  }
+  return -1;
+}
+
 
 async function startAnalysis() {
   console.log('Starting analysis...');
