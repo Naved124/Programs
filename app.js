@@ -2525,7 +2525,7 @@ function formatDetectionResultRobust(sig, index, severity) {
 // Original function kept for compatibility
 function displayFileSignatures() {
     displayFileSignaturesRobust();
-}
+
 
     const signatureResults = document.getElementById('signatureResults');
     const hexDumpSection = document.getElementById('hexDumpSection');
@@ -2549,6 +2549,7 @@ function displayFileSignatures() {
             </div>
         `;
         return;}
+    }
     
     // Separate detections by confidence level
     const highConfidence = analysisResults.fileSignatures.filter(sig => sig.confidence >= 0.8);
