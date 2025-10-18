@@ -429,6 +429,27 @@ function resetAnalysis() {
       uploadArea.removeAttribute('class'); // remove drag
       const f = e.dataTransfer.files && e.dataTransfer.files[0];
       if (f) processFile(f);
+        // Tab switching
+const tabBtns = document.querySelectorAll('.tab-btn');
+const tabPanes = document.querySelectorAll('.tab-pane');
+
+tabBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const targetTab = btn.getAttribute('data-tab');
+    
+    // Remove active from all
+    tabBtns.forEach(b => b.classList.remove('active'));
+    tabPanes.forEach(p => p.classList.remove('active'));
+    
+    // Add active to clicked
+    btn.classList.add('active');
+    const targetPane = document.getElementById(targetTab);
+    if (targetPane) targetPane.classList.add('active');
+  });
+});
+
+console.log('Steganography detector initialized');
+
     });
   }
 
