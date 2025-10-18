@@ -390,6 +390,16 @@ function resetAnalysis() {
 }
 
 // --- Event wiring ---
+
+  const fileInput  = document.getElementById('fileInput');
+  const uploadArea = document.getElementById('uploadArea');
+
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files[0]) processFile(fileInput.files[0]);
+    });
+  }
+
 (function init() {
   const modeSel = document.getElementById('detectionMode');
   const thrSel  = document.getElementById('confidenceThreshold');
@@ -422,36 +432,48 @@ function resetAnalysis() {
   }
 
   if (uploadArea) {
-    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag'); });
-    uploadArea.addEventListener('dragleave', () => { uploadArea.classList.remove('drag'); });
+    // Click to open file dialog
+    uploadArea.addEventListener('click', () => {
+      if (fileInput) fileInput.click();
+    });
+    
+    uploadArea.addEventListener('dragover', (e) => { 
+      e.preventDefault(); 
+      uploadArea.classList.add('drag'); 
+    });
+    
+    uploadArea.addEventListener('dragleave', () => { 
+      uploadArea.classList.remove('drag'); 
+    });
+    
     uploadArea.addEventListener('drop', (e) => {
       e.preventDefault();
-      uploadArea.removeAttribute('class'); // remove drag
+      uploadArea.classList.remove('drag');
       const f = e.dataTransfer.files && e.dataTransfer.files[0];
       if (f) processFile(f);
-        // Tab switching
-const tabBtns = document.querySelectorAll('.tab-btn');
-const tabPanes = document.querySelectorAll('.tab-pane');
-
-tabBtns.forEach(btn => {
-  btn.addEventListener('click', () => {
-    const targetTab = btn.getAttribute('data-tab');
-    
-    // Remove active from all
-    tabBtns.forEach(b => b.classList.remove('active'));
-    tabPanes.forEach(p => p.classList.remove('active'));
-    
-    // Add active to clicked
-    btn.classList.add('active');
-    const targetPane = document.getElementById(targetTab);
-    if (targetPane) targetPane.classList.add('active');
-  });
-});
-
-console.log('Steganography detector initialized');
-
     });
   }
 
+  // Tab switching
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetTab = btn.getAttribute('data-tab');
+      
+      tabBtns.forEach(b => b.classList.remove('active'));
+      tabPanes.forEach(p => p.classList.remove('active'));
+      
+      btn.classList.add('active');
+      const targetPane = document.getElementById(targetTab);
+      if (targetPane) targetPane.classList.add('active');
+    });
+  });
+
   console.log('Steganography detector initialized');
 })();
+
+
+
+
