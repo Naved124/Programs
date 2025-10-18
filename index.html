@@ -1,204 +1,196 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Steganography Detection Tool</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Steganography Detection Tool</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <div class="container">
-        <header class="app-header">
-            <h1>🔍 Image Steganography Detection Tool</h1>
-            <p class="app-description">Advanced forensic analysis for hidden content, executable files, and steganographic patterns in images</p>
-        </header>
+  <div class="container">
 
-        <div class="upload-section">
-            <div class="upload-area" id="uploadArea">
-                <div class="upload-content">
-                    <div class="upload-icon">📁</div>
-                    <h3>Upload Image for Analysis</h3>
-                    <p>Drag &amp; drop an image file here or click to select</p>
-                    <p class="supported-formats">Supports: JPEG, PNG, BMP, GIF</p>
-                    <input type="file" id="fileInput" accept="image/*" class="file-input">
-                </div>
-            </div>
+    <header class="app-header">
+      <h1>🔍 Image Steganography Detection Tool</h1>
+      <p class="app-description">
+        Advanced forensic analysis for hidden content, executable files, and steganographic patterns in images
+      </p>
+    </header>
+
+    <!-- Upload -->
+    <div class="upload-section">
+      <div class="upload-area" id="uploadArea">
+        <div class="upload-content">
+          <div class="upload-icon">📁</div>
+          <h3>Upload Image for Analysis</h3>
+          <p>Drag & drop an image file here or click to select</p>
+          <p class="supported-formats">Supports: JPEG, PNG, BMP, GIF</p>
+          <input type="file" id="fileInput" accept="image/*" class="file-input" />
         </div>
-
-        <div class="analysis-container" id="analysisContainer" style="display: none;">
-            <div class="file-info" id="fileInfo"></div>
-            
-            <div class="detection-settings" id="detectionSettings">
-                <h3>🎯 Detection Settings</h3>
-                <div class="settings-grid">
-                    <div class="form-group">
-                        <label class="form-label">Detection Mode:</label>
-                        <select class="form-control" id="detectionMode">
-                            <option value="conservative">Conservative (Recommended) - High precision, minimal false positives</option>
-                            <option value="balanced">Balanced - Good balance of accuracy and sensitivity</option>
-                            <option value="aggressive">Aggressive - Maximum sensitivity, may have false positives</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Confidence Threshold:</label>
-                        <select class="form-control" id="confidenceThreshold">
-                            <option value="0.8">High (80%) - Only high-confidence detections</option>
-                            <option value="0.6">Medium (60%) - Moderate confidence required</option>
-                            <option value="0.4">Low (40%) - Show all possible detections</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Context Validation:</label>
-                        <select class="form-control" id="contextValidation">
-                            <option value="enabled">Enabled - Exclude pixel data regions</option>
-                            <option value="disabled">Disabled - Scan entire file</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="progress-section" id="progressSection" style="display: none;">
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
-                </div>
-                <div class="progress-text" id="progressText">Analyzing...</div>
-            </div>
-
-            <div class="tabs-container">
-                <div class="tabs-nav">
-                    <button class="tab-btn active" data-tab="overview">🏠 Overview</button>
-                    <button class="tab-btn" data-tab="signatures">🔍 File Signatures</button>
-                    <button class="tab-btn" data-tab="extraction">📦 Extraction</button>
-                    <button class="tab-btn" data-tab="lsb">📊 LSB Analysis</button>
-                    <button class="tab-btn" data-tab="statistical">📈 Statistical</button>
-                    <button class="tab-btn" data-tab="metadata">📋 Metadata</button>
-                    <button class="tab-btn" data-tab="visual">👁️ Visual Analysis</button>
-                </div>
-
-                <div class="tab-content">
-                    <div class="tab-pane active" id="overview">
-                        <div class="threat-assessment" id="threatAssessment">
-                            <h3>Threat Assessment</h3>
-                            <div class="assessment-result" id="assessmentResult"></div>
-                        </div>
-                        <div class="quick-results" id="quickResults"></div>
-                    </div>
-
-                    <div class="tab-pane" id="signatures">
-                        <h3>File Signature Detection</h3>
-                        <div class="detection-results" id="signatureResults"></div>
-                        <div class="hex-dump-section" id="hexDumpSection"></div>
-                    </div>
-
-                    <div class="tab-pane" id="extraction">
-                        <h3>🔧 Extraction &amp; Recovery Tools</h3>
-                        <div class="extraction-controls">
-                            <div class="extraction-methods">
-                                <button class="btn btn--secondary" onclick="extractLSBText()" title="Extract hidden text using LSB steganography methods">
-                                    🔤 Extract LSB Text
-                                </button>
-                                <button class="btn btn--secondary" onclick="extractAppendedFiles()" title="Find files appended after image data">
-                                    📎 Extract Appended Files
-                                </button>
-                                <button class="btn btn--secondary" onclick="extractEmbeddedFiles()" title="Scan for embedded file signatures">
-                                    📁 Extract Embedded Files
-                                </button>
-                                <button class="btn btn--secondary" onclick="extractCustomPattern()" title="Search for custom patterns in image data">
-                                    🔍 Custom Pattern Search
-                                </button>
-                            </div>
-                            <div class="extraction-options">
-                                <div class="form-group">
-                                    <label class="form-label">LSB Extraction Method:</label>
-                                    <select class="form-control" id="lsbMethod">
-                                        <option value="standard">Standard 1-bit LSB (RGB channels)</option>
-                                        <option value="2bit">2-bit LSB (Higher capacity)</option>
-                                        <option value="red-only">Red Channel Only</option>
-                                        <option value="sequential">Sequential RGB</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">File Size Limit (MB):</label>
-                                    <select class="form-control" id="fileSizeLimit">
-                                        <option value="1">1 MB (Recommended)</option>
-                                        <option value="5">5 MB</option>
-                                        <option value="10">10 MB</option>
-                                        <option value="50">50 MB (Large files)</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="extraction-progress" id="extractionProgress" style="display: none;">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="extractionProgressFill"></div>
-                            </div>
-                            <div class="progress-text" id="extractionProgressText">Extracting...</div>
-                        </div>
-                        <div class="extraction-results" id="extractionResults"></div>
-                    </div>
-
-                    <div class="tab-pane" id="lsb">
-                        <h3>LSB Steganography Analysis</h3>
-                        <div class="lsb-results" id="lsbResults"></div>
-                        <div class="lsb-visual" id="lsbVisual"></div>
-                    </div>
-
-                    <div class="tab-pane" id="statistical">
-                        <h3>Statistical Analysis</h3>
-                        <div class="stats-results" id="statsResults"></div>
-                        <div class="histograms" id="histograms"></div>
-                    </div>
-
-                    <div class="tab-pane" id="metadata">
-                        <h3>Metadata Analysis</h3>
-                        <div class="metadata-results" id="metadataResults"></div>
-                    </div>
-
-                    <div class="tab-pane" id="visual">
-                        <h3>Visual Analysis Tools</h3>
-                        <div class="visual-controls">
-                            <button class="btn btn--secondary" onclick="showChannelAnalysis('red')" title="Analyze red color channel">
-                                🔴 Red Channel
-                            </button>
-                            <button class="btn btn--secondary" onclick="showChannelAnalysis('green')" title="Analyze green color channel">
-                                🟢 Green Channel
-                            </button>
-                            <button class="btn btn--secondary" onclick="showChannelAnalysis('blue')" title="Analyze blue color channel">
-                                🔵 Blue Channel
-                            </button>
-                            <button class="btn btn--secondary" onclick="showChannelAnalysis('lsb')" title="Visualize least significant bits">
-                                👁️ LSB Visualization
-                            </button>
-                            <button class="btn btn--secondary" onclick="showChannelAnalysis('histogram')" title="Show color histograms">
-                                📊 Channel Histograms
-                            </button>
-                        </div>
-                        <div class="visual-results" id="visualResults"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="export-section">
-                <h3 style="margin-bottom: 16px; text-align: center; color: var(--color-text);">📊 Export &amp; Download Options</h3>
-                <div class="export-actions">
-                    <button class="btn btn--primary" onclick="exportResults()" title="Export analysis report in multiple formats">
-                        📄 Export Analysis Report
-                    </button>
-                    <button class="btn btn--primary" onclick="downloadAllExtracted()" title="Download all extracted files and texts">
-                        📦 Download All Extracted
-                    </button>
-                    <button class="btn btn--secondary" onclick="saveAnalysisSession(analysisResults)" title="Save analysis to browser storage">
-                        💾 Save Analysis Session
-                    </button>
-                    <button class="btn btn--secondary" onclick="resetAnalysis()" title="Clear current analysis and start over">
-                        🔄 Analyze Another Image
-                    </button>
-                </div>
-                <div id="downloadStatus" class="download-status-area" style="display: none; margin-top: 16px;"></div>
-            </div>
-        </div>
+      </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Analysis -->
+    <div class="analysis-container" id="analysisContainer" style="display: none;">
+      <!-- Basic file info -->
+      <div class="file-info" id="fileInfo"></div>
+
+      <!-- Settings -->
+      <div class="detection-settings" id="detectionSettings">
+        <h3>🎯 Detection Settings</h3>
+        <div class="settings-grid">
+          <div class="form-group">
+            <label class="form-label">Detection Mode:</label>
+            <select class="form-control" id="detectionMode">
+              <option value="conservative">Conservative (Recommended) - High precision, minimal false positives</option>
+              <option value="balanced">Balanced - Good balance of accuracy and sensitivity</option>
+              <option value="aggressive">Aggressive - Maximum sensitivity, may have false positives</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Confidence Threshold:</label>
+            <select class="form-control" id="confidenceThreshold">
+              <option value="0.8">High (80%) - Only high-confidence detections</option>
+              <option value="0.6">Medium (60%) - Moderate confidence required</option>
+              <option value="0.4">Low (40%) - Show all possible detections</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Context Validation:</label>
+            <select class="form-control" id="contextValidation">
+              <option value="enabled">Enabled - Exclude pixel data regions</option>
+              <option value="disabled">Disabled - Scan entire file</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-section" id="progressSection" style="display: none;">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-text" id="progressText">Analyzing...</div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="tabs-container">
+        <div class="tabs-nav">
+          <button class="tab-btn active" data-tab="overview">🏠 Overview</button>
+          <button class="tab-btn" data-tab="signatures">🔍 File Signatures</button>
+          <button class="tab-btn" data-tab="extraction">📦 Extraction</button>
+          <button class="tab-btn" data-tab="lsb">📊 LSB Analysis</button>
+          <button class="tab-btn" data-tab="statistical">📈 Statistical</button>
+          <button class="tab-btn" data-tab="metadata">📋 Metadata</button>
+          <button class="tab-btn" data-tab="visual">👁️ Visual Analysis</button>
+        </div>
+
+        <div class="tab-content">
+          <!-- Overview -->
+          <div class="tab-pane active" id="overview">
+            <div class="threat-assessment" id="threatAssessment">
+              <h3>Threat Assessment</h3>
+              <div class="assessment-result" id="assessmentResult"></div>
+            </div>
+            <div class="quick-results" id="quickResults"></div>
+          </div>
+
+          <!-- Signatures -->
+          <div class="tab-pane" id="signatures">
+            <h3>File Signature Detection</h3>
+            <div class="detection-results" id="signatureResults"></div>
+            <div class="hex-dump-section" id="hexDumpSection"></div>
+          </div>
+
+          <!-- Extraction -->
+          <div class="tab-pane" id="extraction">
+            <h3>🔧 Extraction & Recovery Tools</h3>
+
+            <div class="extraction-controls">
+              <div class="extraction-methods">
+                <button class="btn btn--secondary" onclick="extractLSBText()" title="Extract hidden text using LSB steganography methods">🔤 Extract LSB Text</button>
+                <button class="btn btn--secondary" onclick="extractAppendedFiles()" title="Find files appended after image data">📎 Extract Appended Files</button>
+                <button class="btn btn--secondary" onclick="extractEmbeddedFiles()" title="Scan for embedded file signatures">📁 Extract Embedded Files</button>
+                <button class="btn btn--secondary" onclick="extractCustomPattern()" title="Search for custom patterns in image data">🔍 Custom Pattern Search</button>
+              </div>
+
+              <div class="extraction-options">
+                <div class="form-group">
+                  <label class="form-label">LSB Extraction Method:</label>
+                  <select class="form-control" id="lsbMethod">
+                    <option value="standard">Standard 1-bit LSB (RGB channels)</option>
+                    <option value="2bit">2-bit LSB (Higher capacity)</option>
+                    <option value="red-only">Red Channel Only</option>
+                    <option value="sequential">Sequential RGB</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">File Size Limit (MB):</label>
+                  <select class="form-control" id="fileSizeLimit">
+                    <option value="1">1 MB (Recommended)</option>
+                    <option value="5">5 MB</option>
+                    <option value="10">10 MB</option>
+                    <option value="50">50 MB (Large files)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="extraction-progress" id="extractionProgress" style="display: none;">
+              <div class="progress-bar"><div class="progress-fill" id="extractionProgressFill"></div></div>
+              <div class="progress-text" id="extractionProgressText">Extracting...</div>
+            </div>
+
+            <div class="extraction-results" id="extractionResults"></div>
+          </div>
+
+          <!-- LSB -->
+          <div class="tab-pane" id="lsb">
+            <h3>LSB Steganography Analysis</h3>
+            <div class="lsb-results" id="lsbResults"></div>
+            <div class="lsb-visual" id="lsbVisual"></div>
+          </div>
+
+          <!-- Statistical -->
+          <div class="tab-pane" id="statistical">
+            <h3>Statistical Analysis</h3>
+            <div class="stats-results" id="statsResults"></div>
+            <div class="histograms" id="histograms"></div>
+          </div>
+
+          <!-- Metadata -->
+          <div class="tab-pane" id="metadata">
+            <h3>Metadata Analysis</h3>
+            <div class="metadata-results" id="metadataResults"></div>
+          </div>
+
+          <!-- Visual -->
+          <div class="tab-pane" id="visual">
+            <h3>Visual Analysis Tools</h3>
+            <div class="visual-controls">
+              <button class="btn btn--secondary" onclick="showChannelAnalysis('red')" title="Analyze red color channel">🔴 Red Channel</button>
+              <button class="btn btn--secondary" onclick="showChannelAnalysis('green')" title="Analyze green color channel">🟢 Green Channel</button>
+              <button class="btn btn--secondary" onclick="showChannelAnalysis('blue')" title="Analyze blue color channel">🔵 Blue Channel</button>
+              <button class="btn btn--secondary" onclick="showChannelAnalysis('lsb')" title="Visualize least significant bits">👁️ LSB Visualization</button>
+              <button class="btn btn--secondary" onclick="showChannelAnalysis('histogram')" title="Show color histograms">📊 Channel Histograms</button>
+            </div>
+            <div class="visual-results" id="visualResults"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Export -->
+      <div class="export-section">
+        <h3 style="margin-bottom: 16px; text-align: center; color: var(--color-text);">📊 Export &amp; Download Options</h3>
+        <div class="export-actions">
+          <button class="btn btn--primary" onclick="exportResults()" title="Export analysis report in multiple formats">📄 Export Analysis Report</button>
+          <button class="btn btn--primary" onclick="downloadAllExtracted()" title="Download all extracted files and texts">📦 Download All Extracted</button>
+          <button class="btn btn--secondary" onclick="saveAnalysisSession(analysisResults)" title="Save analysis to browser storage">💾 Save Analysis Session</button>
+          <button class="btn btn--secondary" onclick="resetAnalysis()" title="Clear current analysis and start over">🔄 Analyze Another Image</button>
+        </div>
+        <div id="downloadStatus" class="download-status-area" style="display: none; margin-top: 16px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- App JS -->
+  <script src="app.js"></script>
 </body>
 </html>
