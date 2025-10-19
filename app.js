@@ -1,6 +1,5 @@
 // =============================
-// Image Steganography Tool - Complete Working Version
-// Matches your HTML structure exactly
+// Image Steganography Tool - Corrected & Enhanced Version
 // =============================
 
 // --- Constants ---
@@ -30,6 +29,7 @@ let detectionSettings = { mode: 'conservative', confidenceThreshold: 0.8, contex
 let analysisResults   = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
 let currentFile = null;
 let currentImageBinary = null;
+let currentImageSrc = null; // Store the Data URL for canvas operations
 
 // --- Utility helpers ---
 function checkForKnownSignatures(data) {
@@ -134,6 +134,13 @@ async function processFile(file) {
     currentFile = file;
     analysisResults = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
 
+    // Create a Data URL to be used by canvas operations
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      currentImageSrc = e.target.result;
+    };
+    reader.readAsDataURL(file);
+    
     const analysisEl = document.getElementById('analysisContainer');
     if (analysisEl) analysisEl.style.display = 'block';
 
@@ -157,6 +164,8 @@ async function processFile(file) {
 
 async function startAnalysis() {
   console.log('Starting analysis...');
+  // Clear old results
+  resetAnalysisResults();
   await analyzeFileSignatures();
   console.log('Analysis complete. Found', analysisResults.fileSignatures.length, 'signatures');
   displayResults();
@@ -171,44 +180,47 @@ async function analyzeFileSignatures() {
   else if (mime.includes('png')) endOffset = pngEndOffset(u8);
   else if (mime.includes('gif')) endOffset = u8.lastIndexOf(0x3B) + 1; // 0x3B trailer
 
-  // Build regions strictly AFTER the real end of image
   const regions = [];
+  
+  // Region 1: Appended data (if any)
+  // We check for a reasonable amount of data (4KB) after the end marker
   if (endOffset > -1 && endOffset < u8.length - 4096) {
     regions.push({ start: endOffset, format: 'appended' });
   }
 
-  // Conservative: if no appended region, do NOT scan at all
-  if (detectionSettings.mode === 'conservative' && regions.length === 0) {
-    analysisResults.fileSignatures = [];
-    analysisResults.threatLevel = 'safe';
-    return;
+  // Region 2: Balanced mode - scan file *after* a 64KB header
+  if (detectionSettings.mode === 'balanced') {
+    regions.push({ start: 64 * 1024, format: 'full_skip_header' });
   }
-
-  // Balanced: if no appended region, scan first 64 KB only
-  if (detectionSettings.mode === 'balanced' && regions.length === 0) {
-    regions.push({ start: 0, format: 'limited' });
-  }
-
-  // Aggressive: full fallback
-  if (detectionSettings.mode === 'aggressive' && regions.length === 0) {
+  
+  // Region 3: Aggressive mode - scan *entire* file
+  if (detectionSettings.mode === 'aggressive') {
     regions.push({ start: 0, format: 'full' });
   }
+  
+  // Conservative mode will only run if the 'appended' region was added.
 
   const hits = [];
   for (const region of regions) {
+    // Skip this region if it's outside the file bounds
+    if (region.start >= u8.length) continue;
+
     const window = u8.slice(region.start);
 
     // Validate appended data strongly: require signature AND entropy
     if (region.format === 'appended') {
       const v = validateAppendedData(window);
       const hasSig = checkForKnownSignatures(window);
+      // Check if validation meets the mode's confidence threshold
       const strong = hasSig && v.confidence >= detectionSettings.confidenceThreshold && window.length >= 4096;
-      if (!strong) continue;
+      if (!strong) continue; // Skip this appended region if validation fails
     }
 
-    const budget = region.format === 'limited' ? 64 * 1024
-                  : region.format === 'full' ? Math.min(window.length, 256 * 1024)
-                  : Math.min(window.length, 256 * 1024);
+    // Set a performance budget for scanning
+    const budget = (region.format === 'full' || region.format === 'full_skip_header')
+                 ? Math.min(window.length, 256 * 1024) // Scan up to 256KB for full scans
+                 : Math.min(window.length, 256 * 1024); // Scan up to 256KB for appended
+                 
     const slab = window.slice(0, budget);
     let hex = '';
     for (let i = 0; i < slab.length; i++) hex += slab[i].toString(16).padStart(2,'0');
@@ -217,15 +229,18 @@ async function analyzeFileSignatures() {
     for (const sigHex in FILE_SIGNATURES) {
       const idx = hex.indexOf(sigHex);
       if (idx === -1) continue;
+      
       const byteOffset = region.start + ((idx / 2) | 0);
       const meta = FILE_SIGNATURES[sigHex];
       const remaining = u8.length - byteOffset;
+      
       if (remaining < meta.minSize) continue; // too small to be real
+      
       hits.push({
         signature: sigHex,
         name: meta.name,
         extensions: meta.ext,
-        description: `${meta.name} signature`,
+        description: `${meta.name} signature (found via ${region.format} scan)`,
         offset: byteOffset,
         hexOffset: '0x' + byteOffset.toString(16),
         risk: meta.risk
@@ -244,9 +259,10 @@ async function analyzeFileSignatures() {
   const exeFound = analysisResults.fileSignatures.some(s => s.extensions.includes('exe'));
   analysisResults.threatLevel = exeFound ? 'critical' : (analysisResults.fileSignatures.length ? 'high' : 'safe');
 }
+
 // === FULL LSB TEXT EXTRACTION ===
 async function extractLSBText() {
-  if (!currentFile) {
+  if (!currentFile || !currentImageSrc) {
     alert('Please upload an image first');
     return;
   }
@@ -255,152 +271,156 @@ async function extractLSBText() {
   if (!extractionResults) return;
 
   // Show progress
-  extractionResults.innerHTML = '<div class="progress-text">🔍 Extracting LSB data from image...</div>';
+  extractionResults.innerHTML = '<div class="progress-text" style="padding: 16px;">🔍 Extracting LSB data from image...</div>';
 
   try {
     // Load image into canvas
     const img = new Image();
-    const reader = new FileReader();
     
-    reader.onload = function(e) {
-      img.onload = function() {
-        // Create canvas
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        
-        // Get pixel data
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const pixels = imageData.data;
-        
-        // Get LSB extraction method
-        const method = document.getElementById('lsbMethod')?.value || 'standard';
-        
-        // Extract LSBs based on method
-        let extractedBits = [];
-        
-        switch(method) {
-          case 'standard': // 1-bit LSB from RGB
-            for (let i = 0; i < pixels.length; i += 4) {
-              extractedBits.push(pixels[i] & 1);     // R
-              extractedBits.push(pixels[i+1] & 1);   // G
-              extractedBits.push(pixels[i+2] & 1);   // B
-            }
-            break;
-            
-          case '2bit': // 2-bit LSB from RGB
-            for (let i = 0; i < pixels.length; i += 4) {
-              extractedBits.push((pixels[i] & 2) >> 1);
-              extractedBits.push(pixels[i] & 1);
-              extractedBits.push((pixels[i+1] & 2) >> 1);
-              extractedBits.push(pixels[i+1] & 1);
-              extractedBits.push((pixels[i+2] & 2) >> 1);
-              extractedBits.push(pixels[i+2] & 1);
-            }
-            break;
-            
-          case 'red-only': // Red channel only
-            for (let i = 0; i < pixels.length; i += 4) {
-              extractedBits.push(pixels[i] & 1);
-            }
-            break;
-            
-          case 'sequential': // Sequential RGB
-            for (let i = 0; i < pixels.length; i++) {
-              if (i % 4 !== 3) extractedBits.push(pixels[i] & 1);
-            }
-            break;
-        }
-        
-        // Convert bits to bytes
-        let bytes = [];
-        for (let i = 0; i < extractedBits.length; i += 8) {
-          if (i + 7 < extractedBits.length) {
-            let byte = 0;
-            for (let j = 0; j < 8; j++) {
-              byte = (byte << 1) | extractedBits[i + j];
-            }
-            bytes.push(byte);
-          }
-        }
-        
-        // Try to decode as text
-        let extractedText = '';
-        let validTextFound = false;
-        
-        // Method 1: Look for null-terminated string
-        for (let i = 0; i < Math.min(bytes.length, 10000); i++) {
-          if (bytes[i] === 0) {
-            if (i > 10) { // At least 10 chars
-              const potentialText = String.fromCharCode(...bytes.slice(0, i));
-              if (/^[\x20-\x7E\n\r\t]+$/.test(potentialText)) {
-                extractedText = potentialText;
-                validTextFound = true;
-                break;
-              }
-            }
-          }
-        }
-        
-        // Method 2: Extract all printable ASCII
-        if (!validTextFound) {
-          const printable = bytes.filter(b => (b >= 32 && b <= 126) || b === 10 || b === 13);
-          if (printable.length > 20) {
-            extractedText = String.fromCharCode(...printable.slice(0, 5000));
-            validTextFound = true;
-          }
-        }
-        
-        // Display results
-        if (validTextFound && extractedText.length > 10) {
-          extractionResults.innerHTML = `
-            <div class="detection-result" style="border-left-color: #4CAF50;">
-              <div class="result-header">
-                <span class="result-title">✅ LSB Text Extracted</span>
-                <span class="result-badge badge-safe">SUCCESS</span>
-              </div>
-              <p><strong>Method:</strong> ${method}</p>
-              <p><strong>Length:</strong> ${extractedText.length} characters</p>
-              <p><strong>Total Bits:</strong> ${extractedBits.length.toLocaleString()}</p>
-              
-              <div style="margin-top: 16px; padding: 16px; background: #f5f5f5; border-radius: 8px; max-height: 300px; overflow-y: auto;">
-                <strong>Extracted Text:</strong>
-                <pre style="margin-top: 8px; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.9rem;">${extractedText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
-              </div>
-              
-              <button class="btn btn--primary" onclick="downloadExtractedText('${extractedText.replace(/'/g, "\\'")}', '${currentFile.name}')" style="margin-top: 16px;">
-                💾 Download Extracted Text
-              </button>
-            </div>
-          `;
-        } else {
-          extractionResults.innerHTML = `
-            <div class="detection-result" style="border-left-color: #FF9800;">
-              <div class="result-header">
-                <span class="result-title">⚠️ No Clear Text Found</span>
-                <span class="result-badge badge-warn">NO DATA</span>
-              </div>
-              <p>No readable text detected in LSB data using the <strong>${method}</strong> method.</p>
-              <p><strong>Extracted Bits:</strong> ${extractedBits.length.toLocaleString()}</p>
-              <p><strong>Possible Reasons:</strong></p>
-              <ul style="margin-left: 20px; margin-top: 8px;">
-                <li>Image doesn't contain LSB steganography</li>
-                <li>Wrong extraction method selected</li>
-                <li>Data is encrypted or compressed</li>
-                <li>Using different bit-plane encoding</li>
-              </ul>
-              <p style="margin-top: 12px;"><em>💡 Try different LSB extraction methods from the dropdown above.</em></p>
-            </div>
-          `;
-        }
-      };
+    img.onload = function() {
+      // Create canvas
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
       
-      img.src = e.target.result;
+      // Get pixel data
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imageData.data;
+      
+      // Get LSB extraction method
+      const method = document.getElementById('lsbMethod')?.value || 'standard';
+      
+      // Extract LSBs based on method
+      let extractedBits = [];
+      
+      switch(method) {
+        case 'standard': // 1-bit LSB from RGB
+          for (let i = 0; i < pixels.length; i += 4) {
+            extractedBits.push(pixels[i] & 1);     // R
+            extractedBits.push(pixels[i+1] & 1);   // G
+            extractedBits.push(pixels[i+2] & 1);   // B
+          }
+          break;
+          
+        case '2bit': // 2-bit LSB from RGB
+          for (let i = 0; i < pixels.length; i += 4) {
+            extractedBits.push((pixels[i] & 2) >> 1);
+            extractedBits.push(pixels[i] & 1);
+            extractedBits.push((pixels[i+1] & 2) >> 1);
+            extractedBits.push(pixels[i+1] & 1);
+            extractedBits.push((pixels[i+2] & 2) >> 1);
+            extractedBits.push(pixels[i+2] & 1);
+          }
+          break;
+          
+        case 'red-only': // Red channel only
+          for (let i = 0; i < pixels.length; i += 4) {
+            extractedBits.push(pixels[i] & 1);
+          }
+          break;
+          
+        case 'sequential': // Sequential RGB
+          for (let i = 0; i < pixels.length; i++) {
+            if (i % 4 !== 3) extractedBits.push(pixels[i] & 1);
+          }
+          break;
+      }
+      
+      // Convert bits to bytes
+      let bytes = [];
+      for (let i = 0; i < extractedBits.length; i += 8) {
+        if (i + 7 < extractedBits.length) {
+          let byte = 0;
+          for (let j = 0; j < 8; j++) {
+            byte = (byte << 1) | extractedBits[i + j];
+          }
+          bytes.push(byte);
+        }
+      }
+      
+      // Try to decode as text
+      let extractedText = '';
+      let validTextFound = false;
+      
+      // Method 1: Look for null-terminated string
+      for (let i = 0; i < Math.min(bytes.length, 10000); i++) {
+        if (bytes[i] === 0) {
+          if (i > 10) { // At least 10 chars
+            const potentialText = String.fromCharCode(...bytes.slice(0, i));
+            if (/^[\x20-\x7E\n\r\t]+$/.test(potentialText)) {
+              extractedText = potentialText;
+              validTextFound = true;
+              break;
+            }
+          }
+        }
+      }
+      
+      // Method 2: Extract all printable ASCII
+      if (!validTextFound) {
+        const printable = bytes.filter(b => (b >= 32 && b <= 126) || b === 10 || b === 13);
+        if (printable.length > 20) {
+          extractedText = String.fromCharCode(...printable.slice(0, 5000));
+          validTextFound = true;
+        }
+      }
+      
+      // Display results
+      if (validTextFound && extractedText.length > 10) {
+        extractionResults.innerHTML = `
+          <div class="detection-result" style="border-left-color: #4CAF50;">
+            <div class="result-header">
+              <span class="result-title">✅ LSB Text Extracted</span>
+              <span class="result-badge badge-safe">SUCCESS</span>
+            </div>
+            <p><strong>Method:</strong> ${method}</p>
+            <p><strong>Length:</strong> ${extractedText.length} characters</p>
+            <p><strong>Total Bits:</strong> ${extractedBits.length.toLocaleString()}</p>
+            
+            <div style="margin-top: 16px; padding: 16px; background: #f5f5f5; border-radius: 8px; max-height: 300px; overflow-y: auto;">
+              <strong>Extracted Text:</strong>
+              <pre style="margin-top: 8px; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 0.9rem;">${extractedText.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+            </div>
+            
+            <button class="btn btn--primary" id="downloadLsbTextBtn" style="margin-top: 16px;">
+              💾 Download Extracted Text
+            </button>
+          </div>
+        `;
+        // Add event listener to the new button
+        document.getElementById('downloadLsbTextBtn').onclick = () => {
+          downloadExtractedText(extractedText, currentFile.name);
+        };
+
+      } else {
+        extractionResults.innerHTML = `
+          <div class="detection-result" style="border-left-color: #FF9800;">
+            <div class="result-header">
+              <span class="result-title">⚠️ No Clear Text Found</span>
+              <span class="result-badge badge-warn">NO DATA</span>
+            </div>
+            <p>No readable text detected in LSB data using the <strong>${method}</strong> method.</p>
+            <p><strong>Extracted Bits:</strong> ${extractedBits.length.toLocaleString()}</p>
+            <p><strong>Possible Reasons:</strong></p>
+            <ul style="margin-left: 20px; margin-top: 8px;">
+              <li>Image doesn't contain LSB steganography</li>
+              <li>Wrong extraction method selected</li>
+              <li>Data is encrypted or compressed</li>
+              <li>Using different bit-plane encoding</li>
+            </ul>
+            <p style="margin-top: 12px;"><em>💡 Try different LSB extraction methods from the dropdown above.</em></p>
+          </div>
+        `;
+      }
     };
     
-    reader.readAsDataURL(currentFile);
+    img.onerror = function() {
+      throw new Error('Could not load image into canvas. The file might be corrupt or not a valid image.');
+    };
+
+    img.src = currentImageSrc; // Use the stored Data URL
     
   } catch(e) {
     extractionResults.innerHTML = `
@@ -421,7 +441,6 @@ function downloadExtractedText(text, originalFilename) {
   const filename = 'extracted-lsb-' + originalFilename.replace(/\.[^/.]+$/, '') + '.txt';
   downloadFile(text, filename, 'text/plain');
 }
-
 
 // --- Display results ---
 function displayResults() {
@@ -453,7 +472,7 @@ function displayThreatAssessment() {
 
   html += `<div style="margin-top:16px">
     <p><strong>Detection Mode:</strong> ${detectionSettings.mode.charAt(0).toUpperCase() + detectionSettings.mode.slice(1)}</p>
-    <p><strong>Enhanced Error Handling:</strong> Enabled</p>
+    <p><strong>Confidence Threshold:</strong> ${(detectionSettings.confidenceThreshold * 100).toFixed(0)}%</p>
   </div>`;
 
   assessmentEl.innerHTML = html;
@@ -466,13 +485,14 @@ function displayQuickResults() {
   const count    = analysisResults.fileSignatures.length;
   const highConf = analysisResults.fileSignatures.filter(s => s.risk === 'CRITICAL' || s.risk === 'HIGH').length;
   const exeCount = analysisResults.fileSignatures.filter(s => s.extensions.includes('exe')).length;
+  const appendedCount = analysisResults.fileSignatures.filter(s => s.description.includes('appended')).length;
 
   quickEl.innerHTML = `
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-value">${count}</div><div class="stat-label">Total Detections</div></div>
-      <div class="stat-card"><div class="stat-value">${highConf}</div><div class="stat-label">High Confidence (≥80%)</div></div>
+      <div class="stat-card"><div class="stat-value">${highConf}</div><div class="stat-label">High/Critical Risk</div></div>
       <div class="stat-card"><div class="stat-value">${exeCount}</div><div class="stat-label">Executable Files</div></div>
-      <div class="stat-card"><div class="stat-value">${(detectionSettings.confidenceThreshold * 100).toFixed(0)}%</div><div class="stat-label">Average Confidence</div></div>
+      <div class="stat-card"><div class="stat-value">${appendedCount}</div><div class="stat-label">Appended Detections</div></div>
     </div>
   `;
 }
@@ -488,11 +508,10 @@ function displayFileSignatures() {
           <span class="result-title">✅ No embedded file signatures detected</span>
           <span class="result-badge badge-safe">CLEAN</span>
         </div>
-        <p>The image appears to contain only standard image data with no embedded files.</p>
+        <p>The image appears to contain only standard image data with no embedded files based on the current detection mode.</p>
+        <p><em>💡 Try 'Balanced' or 'Aggressive' mode for a deeper scan.</em></p>
         <div class="detection-stats">
-          <small>✓ Advanced structure validation enabled<br>
-          ✓ Context-aware detection active<br>
-          ✓ False positive filtering applied</small>
+          <small>✓ Detection Mode: ${detectionSettings.mode}</small>
         </div>
       </div>`;
     return;
@@ -509,9 +528,9 @@ function displayFileSignatures() {
         </div>
         <p>${sig.description}</p>
         <ul>
-          <li>Signature: ${sig.signature}</li>
-          <li>Offset: ${sig.hexOffset}</li>
-          <li>Extensions: ${sig.extensions.join(', ')}</li>
+          <li>Signature: <strong>${sig.signature}</strong></li>
+          <li>Offset: ${sig.hexOffset} (Byte: ${sig.offset})</li>
+          <li>Possible Extensions: ${sig.extensions.join(', ')}</li>
         </ul>
       </div>`;
   });
@@ -530,13 +549,9 @@ function exportResults() {
 }
 
 function downloadAllExtracted() {
-  const pkg = {
-    note: 'No extracted binaries available; providing analysis report package',
-    file: { name: currentFile?.name, size: currentFile?.size, type: currentFile?.type },
-    settings: detectionSettings,
-    results: analysisResults
-  };
-  downloadFile(JSON.stringify(pkg, null, 2), 'steg-analysis-package.json', 'application/json');
+  alert('Starting batch extraction...\nYou will receive multiple download prompts for any detected appended or embedded files.');
+  extractAppendedFiles();
+  extractEmbeddedFiles();
 }
 
 function saveAnalysisSession(data = analysisResults) {
@@ -549,39 +564,40 @@ function saveAnalysisSession(data = analysisResults) {
       results: data
     };
     localStorage.setItem(key, JSON.stringify(payload));
-    alert('Session saved');
+    alert('Session saved to browser local storage.');
   } catch (e) {
     alert('Could not save session: ' + e.message);
   }
 }
 
-function resetAnalysis() {
+// Clears result sections but keeps settings and file
+function resetAnalysisResults() {
   analysisResults = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
-  currentFile = null;
   ['assessmentResult','quickResults','signatureResults','extractionResults','lsbResults','lsbVisual','statsResults','histograms','metadataResults','visualResults']
     .forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+}
+
+// Full reset
+function resetAnalysis() {
+  resetAnalysisResults();
+  currentFile = null;
+  currentImageBinary = null;
+  currentImageSrc = null;
+  
   const analysisEl = document.getElementById('analysisContainer');
   if (analysisEl) analysisEl.style.display = 'none';
+  
+  const infoEl = document.getElementById('fileInfo');
+  if (infoEl) infoEl.innerHTML = '';
+
   const fileInput = document.getElementById('fileInput');
   if (fileInput) fileInput.value = '';
+  
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-// --- Event wiring ---
 
-  const fileInput  = document.getElementById('fileInput');
-  const uploadArea = document.getElementById('uploadArea');
-
-  if (fileInput) {
-    fileInput.addEventListener('change', () => {
-      if (fileInput.files && fileInput.files[0]) processFile(fileInput.files[0]);
-    });
-  }
-  // === Extraction Functions ===
-function extractLSBText() {
-  alert('LSB Text Extraction\n\nThis feature extracts hidden text encoded in the least significant bits of image pixels. Implementation requires canvas analysis of the uploaded image.');
-  // TODO: Implement LSB text extraction from currentImageBinary
-}
+// === Extraction Functions ===
 
 function extractAppendedFiles() {
   if (!currentImageBinary) {
@@ -598,7 +614,7 @@ function extractAppendedFiles() {
   
   if (endOffset > -1 && endOffset < currentImageBinary.length - 100) {
     const appendedData = currentImageBinary.slice(endOffset);
-    const filename = 'extracted-appended-' + Date.now();
+    const filename = `extracted-appended-${Date.now()}.bin`;
     downloadFile(appendedData, filename, 'application/octet-stream');
     alert(`Extracted ${appendedData.length} bytes of appended data after image end marker`);
   } else {
@@ -612,7 +628,19 @@ function extractEmbeddedFiles() {
     return;
   }
   
-  alert(`Found ${analysisResults.fileSignatures.length} embedded file signature(s).\n\nExtraction of complete files requires additional parsing logic for each file type.`);
+  alert(`Attempting to extract ${analysisResults.fileSignatures.length} embedded file(s)...`);
+  
+  analysisResults.fileSignatures.forEach(sig => {
+    try {
+      // Extract from the signature offset to the end of the file
+      const extractedData = currentImageBinary.slice(sig.offset);
+      const filename = `embedded-file-at-${sig.hexOffset}.${sig.extensions[0] || 'bin'}`;
+      downloadFile(extractedData, filename, 'application/octet-stream');
+    } catch (e) {
+      console.error(`Failed to extract file at ${sig.hexOffset}:`, e);
+      alert(`Failed to extract file at ${sig.hexOffset}: ${e.message}`);
+    }
+  });
 }
 
 function extractCustomPattern() {
@@ -624,12 +652,15 @@ function extractCustomPattern() {
     return;
   }
   
-  const hex = Array.from(currentImageBinary.slice(0, Math.min(currentImageBinary.length, 1024*1024)))
+  // Search in the first 1MB for performance
+  const searchLimit = Math.min(currentImageBinary.length, 1024*1024);
+  const hex = Array.from(currentImageBinary.slice(0, searchLimit))
     .map(b => b.toString(16).padStart(2,'0')).join('').toUpperCase();
   
   const idx = hex.indexOf(pattern.toUpperCase());
-  if (idx !== -1) {
-    alert(`Pattern found at byte offset: ${(idx/2)|0} (0x${((idx/2)|0).toString(16)})`);
+  if (idx !== -1 && idx % 2 === 0) { // Ensure it's on a byte boundary
+    const byteOffset = (idx / 2) | 0;
+    alert(`Pattern found at byte offset: ${byteOffset} (0x${byteOffset.toString(16)})`);
   } else {
     alert('Pattern not found in first 1MB of image data');
   }
@@ -640,63 +671,132 @@ function showChannelAnalysis(channel) {
   const resultEl = document.getElementById('visualResults');
   if (!resultEl) return;
   
-  if (!currentImageBinary) {
-    resultEl.innerHTML = '<p style="color: red;">Please upload an image first</p>';
+  if (!currentImageBinary || !currentImageSrc) {
+    resultEl.innerHTML = '<p style="color: red; padding: 16px;">Please upload an image first</p>';
     return;
   }
   
-  let message = '';
-  switch(channel) {
-    case 'red':
-      message = '🔴 <strong>Red Channel Analysis</strong><br>Displays only the red color channel. Useful for detecting anomalies in red-channel LSB steganography.';
-      break;
-    case 'green':
-      message = '🟢 <strong>Green Channel Analysis</strong><br>Displays only the green color channel. Green often carries the most visual information.';
-      break;
-    case 'blue':
-      message = '🔵 <strong>Blue Channel Analysis</strong><br>Displays only the blue color channel. Blue channel LSB is commonly used for hiding data.';
-      break;
-    case 'lsb':
-      message = '👁️ <strong>LSB Visualization</strong><br>Shows the least significant bits amplified. Hidden data appears as visible patterns when LSBs are manipulated.';
-      break;
-    case 'histogram':
-      message = '📊 <strong>Channel Histograms</strong><br>Statistical distribution of pixel values per channel. Irregular patterns may indicate steganography.';
-      break;
+  if (channel === 'histogram') {
+    resultEl.innerHTML = `
+      <div class="detection-result">
+        <p>📊 <strong>Channel Histograms</strong></p>
+        <p style="margin-top: 16px; color: #666;">
+          <em>This feature is not yet implemented. It would show a statistical distribution of pixel values for the R, G, and B channels. Irregular patterns in a histogram can sometimes indicate steganography.</em>
+        </p>
+      </div>
+    `;
+    return;
   }
   
-  resultEl.innerHTML = `
-    <div class="detection-result">
-      <p>${message}</p>
-      <p style="margin-top: 16px; color: #666;">
-        <em>Visual analysis requires canvas rendering. This is a placeholder - full implementation would render the ${channel} analysis here.</em>
-      </p>
-    </div>
-  `;
+  resultEl.innerHTML = `<div class="progress-text" style="padding: 16px;">🎨 Generating ${channel} visualization...</div>`;
+
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Scale canvas for display
+    const maxWidth = resultEl.clientWidth > 0 ? resultEl.clientWidth : 600;
+    const scale = Math.min(1, maxWidth / img.width);
+    canvas.width = img.width * scale;
+    canvas.height = img.height * scale;
+    
+    // Draw original image scaled
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const pixels = imageData.data;
+
+    let title = '';
+
+    for (let i = 0; i < pixels.length; i += 4) {
+      const r = pixels[i];
+      const g = pixels[i+1];
+      const b = pixels[i+2];
+
+      switch (channel) {
+        case 'red':
+          title = '🔴 Red Channel Analysis';
+          pixels[i+1] = 0; // green
+          pixels[i+2] = 0; // blue
+          break;
+        case 'green':
+          title = '🟢 Green Channel Analysis';
+          pixels[i] = 0;   // red
+          pixels[i+2] = 0; // blue
+          break;
+        case 'blue':
+          title = '🔵 Blue Channel Analysis';
+          pixels[i] = 0;   // red
+          pixels[i+1] = 0; // green
+          break;
+        case 'lsb':
+          title = '👁️ LSB Visualization';
+          // Amplify the LSB of each channel
+          pixels[i] = (r & 1) * 255;
+          pixels[i+1] = (g & 1) * 255;
+          pixels[i+2] = (b & 1) * 255;
+          break;
+      }
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+    
+    resultEl.innerHTML = `
+      <div class="detection-result">
+        <h3>${title}</h3>
+        <p>This image shows the isolated ${channel} data. Patterns or noise may indicate hidden information.</p>
+        <canvas id="visualAnalysisCanvas" style="width: 100%; height: auto; margin-top: 16px; border-radius: 8px; border: 1px solid var(--color-card-border);"></canvas>
+      </div>
+    `;
+    
+    // Replace the placeholder canvas with the one we drew on
+    const finalCanvas = document.getElementById('visualAnalysisCanvas');
+    if (finalCanvas) {
+        const finalCtx = finalCanvas.getContext('2d');
+        finalCanvas.width = canvas.width;
+        finalCanvas.height = canvas.height;
+        finalCtx.drawImage(canvas, 0, 0);
+    }
+  };
+  
+  img.onerror = () => {
+    resultEl.innerHTML = '<p style="color: red; padding: 16px;">Error: Could not load image for visual analysis.</p>';
+  };
+  
+  img.src = currentImageSrc;
 }
 
 
+// === App Initialization ===
 (function init() {
   const modeSel = document.getElementById('detectionMode');
   const thrSel  = document.getElementById('confidenceThreshold');
   const ctxSel  = document.getElementById('contextValidation');
 
+  // Settings listeners
   if (modeSel) modeSel.addEventListener('change', (e) => {
     const m = e.target.value || 'conservative';
     detectionSettings.mode = m;
     const cfg = DETECTION_MODES[m] || DETECTION_MODES.conservative;
     detectionSettings.confidenceThreshold = cfg.confidenceThreshold;
     detectionSettings.contextValidation   = cfg.contextValidation;
+    // Re-run analysis if a file is loaded
+    if (currentFile) startAnalysis();
   });
 
   if (thrSel) thrSel.addEventListener('change', (e) => {
     const v = parseFloat(e.target.value);
     if (!Number.isNaN(v)) detectionSettings.confidenceThreshold = v;
+    if (currentFile) startAnalysis();
   });
 
   if (ctxSel) ctxSel.addEventListener('change', (e) => {
     detectionSettings.contextValidation = (e.target.value === 'enabled');
+    if (currentFile) startAnalysis();
   });
 
+  // File upload listeners
   const fileInput  = document.getElementById('fileInput');
   const uploadArea = document.getElementById('uploadArea');
 
@@ -748,7 +848,3 @@ function showChannelAnalysis(channel) {
 
   console.log('Steganography detector initialized');
 })();
-
-
-
-
