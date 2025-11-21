@@ -128,25 +128,19 @@ function downloadFile(data, filename, mimeType) {
   document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-// Promise wrapper to reliably get a DataURL from a File
-function fileToDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const fr = new FileReader();
-    fr.onload = (e) => resolve(e.target.result);
-    fr.onerror = (e) => reject(new Error('Failed to read file as DataURL'));
-    fr.readAsDataURL(file);
-  });
-}
-
 // --- Core analysis ---
 async function processFile(file) {
   try {
     currentFile = file;
     analysisResults = { fileSignatures: [], lsbAnalysis: {}, statisticalAnalysis: {}, metadata: {}, threatLevel: 'safe', analysisErrors: [] };
 
-    // WAIT for DataURL to be ready (fix race condition)
-    currentImageSrc = await fileToDataURL(file);
-
+    // Create a Data URL to be used by canvas operations
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      currentImageSrc = e.target.result;
+    };
+    reader.readAsDataURL(file);
+    
     const analysisEl = document.getElementById('analysisContainer');
     if (analysisEl) analysisEl.style.display = 'block';
 
@@ -164,161 +158,14 @@ async function processFile(file) {
     await startAnalysis();
   } catch (e) {
     console.error('processFile error:', e);
-    alert('Analysis failed: ' + (e.message || e));
+    alert('Analysis failed: ' + e.message);
   }
-}
-
-// compute & populate image stats, histograms and LSB visualization
-async function computeAndDisplayImageStats() {
-  if (!currentImageSrc) return;
-
-  // DOM targets (create gracefully if missing)
-  const metadataEl = document.getElementById('metadataResults');
-  const statsEl = document.getElementById('statsResults');
-  const histEl = document.getElementById('histograms');
-  const lsbEl = document.getElementById('lsbVisual');
-
-  // Load image
-  const img = new Image();
-  await new Promise((resolve, reject) => {
-    img.onload = resolve; img.onerror = () => reject(new Error('Could not load image for stats'));
-    img.src = currentImageSrc;
-  });
-
-  // Draw to a working canvas (limit large images for performance)
-  const MAX_DIM = 1600;
-  let w = img.width, h = img.height;
-  if (w > MAX_DIM || h > MAX_DIM) {
-    const scale = Math.min(MAX_DIM / w, MAX_DIM / h);
-    w = Math.round(w * scale); h = Math.round(h * scale);
-  }
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  const cx = c.getContext('2d');
-  cx.drawImage(img, 0, 0, w, h);
-  const imageData = cx.getImageData(0, 0, w, h);
-  const d = imageData.data;
-
-  // Stats & histograms
-  const histR = new Uint32Array(256), histG = new Uint32Array(256), histB = new Uint32Array(256);
-  let sumR = 0, sumG = 0, sumB = 0;
-  let minR = 255, minG = 255, minB = 255, maxR = 0, maxG = 0, maxB = 0;
-  const total = w * h;
-
-  for (let i = 0; i < d.length; i += 4) {
-    const r = d[i], g = d[i+1], b = d[i+2];
-    histR[r]++; histG[g]++; histB[b]++;
-    sumR += r; sumG += g; sumB += b;
-    if (r < minR) minR = r; if (g < minG) minG = g; if (b < minB) minB = b;
-    if (r > maxR) maxR = r; if (g > maxG) maxG = g; if (b > maxB) maxB = b;
-  }
-
-  const meanR = (sumR/total).toFixed(1), meanG = (sumG/total).toFixed(1), meanB = (sumB/total).toFixed(1);
-
-  // populate metadataResults
-  if (metadataEl) {
-    metadataEl.innerHTML = `
-      <div class="detection-result">
-        <div class="result-header"><div class="result-title">Image Metadata</div></div>
-        <div class="detection-stats">
-          <div><strong>Dimensions:</strong> ${img.width} x ${img.height}px (analysis scaled to ${w}x${h})</div>
-          <div><strong>Format:</strong> ${currentFile?.type || 'unknown'}</div>
-          <div><em>Note:</em> EXIF not parsed; include exif-js/piexifjs to show camera metadata.</div>
-        </div>
-      </div>
-    `;
-  }
-
-  // populate statsResults (means + range)
-  if (statsEl) {
-    statsEl.innerHTML = `
-      <div class="stats-grid" style="margin-bottom:12px">
-        <div class="stat-card"><div class="stat-value">${meanR}</div><div class="stat-label">Mean Red</div></div>
-        <div class="stat-card"><div class="stat-value">${meanG}</div><div class="stat-label">Mean Green</div></div>
-        <div class="stat-card"><div class="stat-value">${meanB}</div><div class="stat-label">Mean Blue</div></div>
-      </div>
-      <div style="color:var(--color-text-secondary);font-size:0.9rem">
-        <div><strong>Range Red:</strong> ${minR} - ${maxR}</div>
-        <div><strong>Range Green:</strong> ${minG} - ${maxG}</div>
-        <div><strong>Range Blue:</strong> ${minB} - ${maxB}</div>
-      </div>
-    `;
-  }
-
-  // Render small histograms into histograms container
-  if (histEl) {
-    histEl.innerHTML = '<div style="display:flex;gap:12px;flex-wrap:wrap"></div>';
-    const wrap = histEl.querySelector('div');
-    [['R', histR], ['G', histG], ['B', histB]].forEach(([label, hist]) => {
-      const cvs = document.createElement('canvas');
-      cvs.width = 256; cvs.height = 100;
-      const ctx = cvs.getContext('2d');
-      let peak = 0; for (let i = 0; i < 256; i++) if (hist[i] > peak) peak = hist[i];
-      for (let x = 0; x < 256; x++) {
-        const hVal = peak ? Math.round((hist[x]/peak) * cvs.height) : 0;
-        ctx.fillStyle = (label === 'R') ? 'rgba(200,40,40,0.9)' : (label === 'G') ? 'rgba(40,160,40,0.9)' : 'rgba(60,80,200,0.9)';
-        ctx.fillRect(x, cvs.height - hVal, 1, hVal);
-      }
-      const block = document.createElement('div');
-      block.style.textAlign = 'center';
-      block.style.width = '256px';
-      const txt = document.createElement('div'); txt.style.fontSize = '0.85rem'; txt.style.color = 'var(--color-text-secondary)';
-      txt.textContent = `${label} channel histogram`;
-      block.appendChild(cvs); block.appendChild(txt);
-      wrap.appendChild(block);
-    });
-  }
-
-  // LSB visualization (1 bit per channel)
-  if (lsbEl) {
-    const lsbCanvas = document.createElement('canvas');
-    lsbCanvas.width = w; lsbCanvas.height = h;
-    const lctx = lsbCanvas.getContext('2d');
-    const out = lctx.createImageData(w, h);
-    const od = out.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const r = d[i], g = d[i+1], b = d[i+2];
-      const rr = (r & 1) ? 255 : 0;
-      const gg = (g & 1) ? 255 : 0;
-      const bb = (b & 1) ? 255 : 0;
-      od[i] = rr; od[i+1] = gg; od[i+2] = bb; od[i+3] = 255;
-    }
-    lctx.putImageData(out, 0, 0);
-
-    // create a scaled preview canvas
-    const preview = document.createElement('canvas');
-    const thumbW = Math.min(600, w);
-    const scale = thumbW / w;
-    preview.width = Math.round(w * scale);
-    preview.height = Math.round(h * scale);
-    const pctx = preview.getContext('2d');
-    pctx.drawImage(lsbCanvas, 0, 0, preview.width, preview.height);
-
-    lsbEl.innerHTML = '<div style="margin-bottom:8px;color:var(--color-text-secondary)">LSB visualization (white = LSB=1)</div>';
-    lsbEl.appendChild(preview);
-  }
-
-  // store a lightweight statistical summary
-  analysisResults.statisticalAnalysis = {
-    means: { r: meanR, g: meanG, b: meanB },
-    ranges: { r: [minR, maxR], g: [minG, maxG], b: [minB, maxB] },
-    totalPixels: total
-  };
 }
 
 async function startAnalysis() {
   console.log('Starting analysis...');
   // Clear old results
   resetAnalysisResults();
-
-  // Compute & show pixel-based metadata/statistics/LSB visuals
-  try {
-    await computeAndDisplayImageStats();
-  } catch (e) {
-    console.warn('computeAndDisplayImageStats error (non-fatal):', e);
-  }
-
-  // Continue with signature analysis
   await analyzeFileSignatures();
   console.log('Analysis complete. Found', analysisResults.fileSignatures.length, 'signatures');
   displayResults();
@@ -401,7 +248,7 @@ async function analyzeFileSignatures() {
     }
   }
 
-  // De-duplicate overlapping hits by signature+offset
+  // De‑duplicate overlapping hits by signature+offset
   const seen = new Set();
   analysisResults.fileSignatures = hits.filter(h => {
     const k = h.signature + ':' + h.offset;
